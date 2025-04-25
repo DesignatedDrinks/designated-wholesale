@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Designated Drinks Wholesale</title>
+  <script src="https://cdn.jsdelivr.net/npm/tabletop@1.6.0/tabletop.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background-color: #ffffff;
+      color: #000000;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #0a0a0a;
+      text-align: center;
+      padding: 20px;
+    }
+    header h1 {
+      color: white;
+      margin: 0;
+    }
+    main {
+      padding: 40px 20px;
+      max-width: 1000px;
+      margin: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th {
+      background-color: #001f3f;
+      color: white;
+      padding: 12px;
+      text-align: left;
+    }
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #ccc;
+      vertical-align: middle;
+    }
+    img {
+      height: 80px;
+      max-width: 80px;
+      object-fit: contain;
+    }
+    footer {
+      text-align: center;
+      font-size: 12px;
+      color: #777;
+      padding: 30px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Wholesale Pricing – Designated Drinks</h1>
+  </header>
+  <main>
+    <table id="product-table">
+      <thead>
+        <tr>
+          <th>Image</th>
+          <th>Product</th>
+          <th>Pack Size</th>
+          <th>Wholesale Price</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+  <footer>
+    &copy; 2025 Designated Drinks. All rights reserved.
+  </footer>
+
+  <script>
+    function init() {
+      Tabletop.init({
+        key: '17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8',
+        callback: function(data, tabletop) {
+          const tableBody = document.querySelector("#product-table tbody");
+          tableBody.innerHTML = "";
+          data.forEach(row => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td><img src="${row['Image URL']}" alt="${row['Product Title']}"></td>
+              <td>${row['Product Title']}</td>
+              <td>${row['Pack Size']}</td>
+              <td>$${parseFloat(row['Wholesale Price']).toFixed(2)}</td>
+            `;
+            tableBody.appendChild(tr);
+          });
+        },
+        simpleSheet: true
+      });
+    }
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
