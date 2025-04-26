@@ -1,28 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Designated Drinks Wholesale</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body {
       font-family: 'Montserrat', sans-serif;
-      background-color: #ffffff;
-      color: #000000;
       margin: 0;
       padding: 0;
+      background-color: #ffffff;
+      color: #000;
     }
     header {
       background-color: #0a0a0a;
+      color: white;
       text-align: center;
       padding: 20px;
     }
-    header h1 {
-      color: white;
-      margin: 0;
-    }
     main {
-      padding: 40px 20px;
-      max-width: 1000px;
+      padding: 20px;
+      max-width: 1100px;
       margin: auto;
     }
     input#searchBar {
@@ -36,75 +34,43 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
-      overflow-x: auto;
+      margin-top: 20px;
+    }
+    th, td {
+      border-bottom: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
     }
     th {
       background-color: #001f3f;
       color: white;
-      padding: 12px;
-      text-align: left;
       cursor: pointer;
     }
-    td {
-      padding: 12px;
-      border-bottom: 1px solid #ccc;
-      vertical-align: middle;
-    }
-    input.quantity {
+    td input.quantity {
       width: 60px;
       padding: 5px;
-    }
-    img {
-      height: 80px;
-      max-width: 80px;
-      object-fit: contain;
+      font-size: 14px;
     }
     #submitOrder {
       margin-top: 30px;
-      padding: 15px 30px;
-      font-size: 18px;
+      padding: 15px 25px;
       background-color: #001f3f;
       color: white;
       border: none;
+      font-size: 18px;
+      width: 100%;
       border-radius: 8px;
       cursor: pointer;
-      width: 100%;
     }
     #submitOrder:hover {
       background-color: #003366;
     }
     footer {
+      margin-top: 40px;
       text-align: center;
       font-size: 12px;
       color: #777;
-      padding: 30px;
-    }
-    @media screen and (max-width: 768px) {
-      table, thead, tbody, th, td, tr {
-        display: block;
-      }
-      thead tr {
-        display: none;
-      }
-      tr {
-        margin-bottom: 15px;
-      }
-      td {
-        padding: 10px;
-        text-align: right;
-        position: relative;
-      }
-      td::before {
-        content: attr(data-label);
-        position: absolute;
-        left: 10px;
-        font-weight: bold;
-        text-align: left;
-      }
-      input.quantity {
-        width: 100%;
-      }
+      padding: 20px;
     }
   </style>
 </head>
@@ -117,10 +83,10 @@
     <table id="product-table">
       <thead>
         <tr>
-          <th onclick="sortTable(1)">Product</th>
-          <th onclick="sortTable(2)">Pack Size</th>
-          <th onclick="sortTable(3)">Wholesale Price</th>
-          <th onclick="sortTable(4)">24-Pack Price</th>
+          <th>Product</th>
+          <th>Pack Size</th>
+          <th>Wholesale Price</th>
+          <th>24-Pack Price</th>
           <th>Quantity</th>
         </tr>
       </thead>
@@ -144,27 +110,21 @@ async function loadSheetData() {
   for (let i = 1; i < rows.length; i++) {
     const [productTitle, packSize, retailPrice, wholesalePrice, imageUrl, price24Pack] = rows[i];
 
-    const unitPrice = parseFloat(wholesalePrice);
-    const casePrice = parseFloat(price24Pack);
-
-    const formattedUnit = !isNaN(unitPrice) ? `$${unitPrice.toFixed(2)}` : '--';
-    const formattedCase = !isNaN(casePrice) ? `$${casePrice.toFixed(2)}` : '--';
-
     if (productTitle) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td data-label="Product">${productTitle}</td>
-        <td data-label="Pack Size">${packSize}</td>
-        <td data-label="Wholesale Price">${formattedUnit}</td>
-        <td data-label="24-Pack Price">${formattedCase}</td>
-        <td data-label="Quantity"><input class="quantity" type="number" min="0"></td>
+        <td>${productTitle}</td>
+        <td>${packSize}</td>
+        <td>$${parseFloat(wholesalePrice).toFixed(2)}</td>
+        <td>$${parseFloat(price24Pack).toFixed(2)}</td>
+        <td><input class="quantity" type="number" min="0" placeholder="0"></td>
       `;
       tableBody.appendChild(tr);
     }
   }
 }
 
-// 🔎 Live Search Bar functionality
+// Search Bar
 document.addEventListener('DOMContentLoaded', function() {
   loadSheetData();
 
@@ -179,68 +139,46 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// 🔄 Sorting functionality
-function sortTable(n) {
-  const table = document.getElementById("product-table");
-  let switching = true;
-  let dir = "asc";
-  let switchcount = 0;
-
-  while (switching) {
-    switching = false;
-    const rows = table.rows;
-
-    for (let i = 1; i < (rows.length - 1); i++) {
-      let shouldSwitch = false;
-      const x = rows[i].getElementsByTagName("TD")[n-1];
-      const y = rows[i + 1].getElementsByTagName("TD")[n-1];
-
-      if (dir === "asc") {
-        if (x.innerText.toLowerCase() > y.innerText.toLowerCase()) {
-          shouldSwitch = true;
-          break;
-        }
-      } else if (dir === "desc") {
-        if (x.innerText.toLowerCase() < y.innerText.toLowerCase()) {
-          shouldSwitch = true;
-          break;
-        }
-      }
-    }
-    if (shouldSwitch) {
-      rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-      switching = true;
-      switchcount++;
-    } else {
-      if (switchcount === 0 && dir === "asc") {
-        dir = "desc";
-        switching = true;
-      }
-    }
-  }
-}
-
-// 📧 Submit Order functionality
+// Submit Order Functionality
 document.getElementById('submitOrder').addEventListener('click', function() {
   const rows = document.querySelectorAll('#product-table tbody tr');
-  let orderSummary = "Order Summary:\n\n";
+  let orderSummary = "Wholesale Order Summary:\n\n";
+  let totalQuantity = 0;
+  let totalCost = 0;
 
+  let itemCount = 1;
   rows.forEach(row => {
     const quantityInput = row.querySelector('input.quantity');
-    const quantity = quantityInput.value;
-    if (quantity && parseInt(quantity) > 0) {
+    const quantity = parseInt(quantityInput.value, 10);
+
+    if (quantity && quantity > 0) {
       const product = row.children[0].innerText.trim();
       const packSize = row.children[1].innerText.trim();
-      const wholesale = row.children[2].innerText.trim();
+      const wholesalePrice = parseFloat(row.children[2].innerText.replace('$', ''));
       const casePrice = row.children[3].innerText.trim();
-      orderSummary += `${product} (${packSize}) - Qty: ${quantity}\n`;
+
+      const lineTotal = (wholesalePrice * quantity);
+
+      orderSummary += `${itemCount}. ${product} (${packSize})\n`;
+      orderSummary += `   Qty: ${quantity}\n`;
+      orderSummary += `   Wholesale Price: $${wholesalePrice.toFixed(2)}\n`;
+      orderSummary += `   24-Pack Price: ${casePrice}\n\n`;
+
+      totalQuantity += quantity;
+      totalCost += lineTotal;
+      itemCount++;
     }
   });
 
-  if (orderSummary.trim() === "Order Summary:") {
+  if (totalQuantity === 0) {
     alert("Please enter quantities for at least one product before submitting your order.");
     return;
   }
+
+  orderSummary += "--------------------------\n";
+  orderSummary += `Total Items Ordered: ${totalQuantity}\n`;
+  orderSummary += `Estimated Total Cost: $${totalCost.toFixed(2)}\n`;
+  orderSummary += "--------------------------\n";
 
   const mailtoLink = `mailto:sales@designateddrinks.ca?subject=New Wholesale Order&body=${encodeURIComponent(orderSummary)}`;
   window.location.href = mailtoLink;
