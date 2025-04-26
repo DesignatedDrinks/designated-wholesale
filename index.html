@@ -25,6 +25,14 @@
       max-width: 1000px;
       margin: auto;
     }
+    input#searchBar {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -59,6 +67,7 @@
     <h1>Wholesale Pricing – Designated Drinks</h1>
   </header>
   <main>
+    <input type="text" id="searchBar" placeholder="Search products...">
     <table id="product-table">
       <thead>
         <tr>
@@ -107,6 +116,18 @@ async function loadSheetData() {
     }
   }
 }
+
+// 🔎 Live Search Bar functionality
+document.getElementById('searchBar').addEventListener('input', function(e) {
+  const searchValue = e.target.value.toLowerCase();
+  const rows = document.querySelectorAll('#product-table tbody tr');
+  
+  rows.forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(searchValue) ? '' : 'none';
+  });
+});
+
 window.addEventListener('DOMContentLoaded', loadSheetData);
 </script>
 
