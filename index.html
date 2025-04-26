@@ -67,7 +67,8 @@
       padding-bottom: 5px;
       text-align: left;
     }
-    table {
+    /* Table view (Desktop) */
+    .desktop-table {
       width: 100%;
       border-collapse: separate;
       border-spacing: 0 15px;
@@ -104,6 +105,53 @@
       background: #f9f9f9;
       padding: 5px;
     }
+    /* Mobile Card View */
+    .mobile-cards {
+      display: none;
+    }
+    .product-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      padding: 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .product-card img {
+      width: 120px;
+      height: 120px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+    .product-card .product-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .product-card .pack-size {
+      font-size: 20px;
+      color: #555;
+      margin-bottom: 6px;
+    }
+    .product-card .price {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    /* Responsive: Hide table on mobile, show cards */
+    @media (max-width: 768px) {
+      .desktop-table {
+        display: none;
+      }
+      .mobile-cards {
+        display: block;
+      }
+      .vendor-header {
+        text-align: center;
+        font-size: 26px;
+        margin-top: 30px;
+      }
+    }
     footer {
       margin-top: 50px;
       text-align: center;
@@ -111,74 +159,10 @@
       color: #999;
       padding: 30px;
     }
-
-    /* --- MOBILE FINAL POLISH --- */
-    @media (max-width: 768px) {
-      main {
-        padding: 20px 10px;
-      }
-      header {
-        flex-direction: column;
-        gap: 10px;
-        padding: 20px 10px;
-      }
-      .filters {
-        flex-direction: column;
-        padding: 0 10px;
-      }
-      .header-center h1 {
-        font-size: 22px;
-      }
-      .vendor-header {
-        font-size: 26px;
-        text-align: center;
-        margin-bottom: 10px;
-      }
-      table, thead, tbody, th, td, tr {
-        display: block;
-      }
-      thead tr {
-        display: none;
-      }
-      tr {
-        margin-bottom: 30px;
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-        padding: 20px;
-        text-align: center;
-      }
-      td {
-        display: block;
-        padding: 8px;
-      }
-      td img {
-        height: 120px;
-        width: 120px;
-        object-fit: contain;
-        margin: 0 auto 12px auto;
-      }
-      td[data-label="Product"] {
-        font-size: 30px;
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
-      td[data-label="Pack Size"] {
-        font-size: 24px;
-        font-weight: 600;
-        margin-bottom: 8px;
-        color: #555;
-      }
-      td[data-label="Wholesale Price"],
-      td[data-label="24-Pack Price"] {
-        font-size: 28px;
-        font-weight: 700;
-        margin-bottom: 6px;
-      }
-    }
   </style>
 </head>
 <body>
+
 <header>
   <div class="header-left">
     <img src="dd-logo.png" alt="Designated Drinks Logo">
@@ -209,7 +193,6 @@
 <footer>
   &copy; 2025 Designated Drinks. All rights reserved.
 </footer>
-
 <script>
 async function loadSheetData() {
   const response = await fetch('https://docs.google.com/spreadsheets/d/17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8/export?format=csv');
@@ -281,7 +264,7 @@ function populateStyleFilter(styles) {
 }
 
 function displayProducts(products) {
-  const productContainer = document.getElementById('productContainer');
+  const container = document.getElementById('productContainer');
   const grouped = {};
 
   products.forEach(product => {
@@ -291,7 +274,7 @@ function displayProducts(products) {
     grouped[product.vendor].push(product);
   });
 
-  productContainer.innerHTML = "";
+  container.innerHTML = "";
 
   for (const vendor in grouped) {
     const vendorSection = document.createElement('div');
@@ -301,27 +284,58 @@ function displayProducts(products) {
     const vendorHeader = document.createElement('div');
     vendorHeader.className = "vendor-header";
     vendorHeader.textContent = vendor;
-
-    const table = document.createElement('table');
-    const tbody = document.createElement('tbody');
-
-    grouped[vendor].forEach(product => {
-      const tr = document.createElement('tr');
-      tr.setAttribute('data-style', product.style.toLowerCase());
-      tr.innerHTML = `
-        <td data-label="Image"><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
-        <td data-label="Product">${product.cleanTitle}</td>
-        <td data-label="Pack Size">${product.packSize}</td>
-        <td data-label="Wholesale Price">$${parseFloat(product.wholesalePrice).toFixed(2)}</td>
-        <td data-label="24-Pack Price">$${parseFloat(product.price24Pack).toFixed(2)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
     vendorSection.appendChild(vendorHeader);
-    vendorSection.appendChild(table);
-    productContainer.appendChild(vendorSection);
+
+    if (window.innerWidth > 768) {
+      // Desktop table view
+      const table = document.createElement('table');
+      table.className = "desktop-table";
+      const thead = document.createElement('thead');
+      thead.innerHTML = `<tr><th>Image</th><th>Product</th><th>Pack Size</th><th>Wholesale Price</th><th>24-Pack Price</th></tr>`;
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+
+      grouped[vendor].forEach(product => {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-style', product.style.toLowerCase());
+        tr.innerHTML = `
+          <td><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
+          <td>${product.cleanTitle}</td>
+          <td>${product.packSize}</td>
+          <td>$${parseFloat(product.wholesalePrice).toFixed(2)}</td>
+          <td>$${parseFloat(product.price24Pack).toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      vendorSection.appendChild(table);
+
+    } else {
+      // Mobile card view
+      const cardContainer = document.createElement('div');
+      cardContainer.className = "mobile-cards";
+
+      grouped[vendor].forEach(product => {
+        const card = document.createElement('div');
+        card.className = "product-card";
+        card.setAttribute('data-style', product.style.toLowerCase());
+
+        card.innerHTML = `
+          <img src="${product.imageUrl}" alt="${product.cleanTitle}">
+          <div class="product-title">${product.cleanTitle}</div>
+          <div class="pack-size">${product.packSize}</div>
+          <div class="price">Wholesale: $${parseFloat(product.wholesalePrice).toFixed(2)}</div>
+          <div class="price">24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}</div>
+        `;
+        cardContainer.appendChild(card);
+      });
+
+      vendorSection.appendChild(cardContainer);
+    }
+
+    container.appendChild(vendorSection);
   }
 }
 
@@ -331,7 +345,7 @@ function applyFilters() {
   const vendorSections = document.querySelectorAll('.vendor-section');
 
   vendorSections.forEach(section => {
-    const rows = section.querySelectorAll('tbody tr');
+    const rows = section.querySelectorAll('.desktop-table tr, .product-card');
     let hasVisible = false;
 
     rows.forEach(row => {
