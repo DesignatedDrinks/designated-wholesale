@@ -51,10 +51,28 @@
       border-bottom: 1px solid #ccc;
       vertical-align: middle;
     }
+    input.quantity {
+      width: 60px;
+      padding: 5px;
+    }
     img {
       height: 80px;
       max-width: 80px;
       object-fit: contain;
+    }
+    #submitOrder {
+      margin-top: 30px;
+      padding: 15px 30px;
+      font-size: 18px;
+      background-color: #001f3f;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+    #submitOrder:hover {
+      background-color: #003366;
     }
     footer {
       text-align: center;
@@ -84,6 +102,9 @@
         font-weight: bold;
         text-align: left;
       }
+      input.quantity {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -100,10 +121,12 @@
           <th onclick="sortTable(2)">Pack Size</th>
           <th onclick="sortTable(3)">Wholesale Price</th>
           <th onclick="sortTable(4)">24-Pack Price</th>
+          <th>Quantity</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
+    <button id="submitOrder">Submit Order</button>
   </main>
   <footer>
     &copy; 2025 Designated Drinks. All rights reserved.
@@ -134,6 +157,7 @@ async function loadSheetData() {
         <td data-label="Pack Size">${packSize}</td>
         <td data-label="Wholesale Price">${formattedUnit}</td>
         <td data-label="24-Pack Price">${formattedCase}</td>
+        <td data-label="Quantity"><input class="quantity" type="number" min="0"></td>
       `;
       tableBody.appendChild(tr);
     }
@@ -195,6 +219,32 @@ function sortTable(n) {
     }
   }
 }
+
+// 📧 Submit Order functionality
+document.getElementById('submitOrder').addEventListener('click', function() {
+  const rows = document.querySelectorAll('#product-table tbody tr');
+  let orderSummary = "Order Summary:\n\n";
+
+  rows.forEach(row => {
+    const quantityInput = row.querySelector('input.quantity');
+    const quantity = quantityInput.value;
+    if (quantity && parseInt(quantity) > 0) {
+      const product = row.children[0].innerText.trim();
+      const packSize = row.children[1].innerText.trim();
+      const wholesale = row.children[2].innerText.trim();
+      const casePrice = row.children[3].innerText.trim();
+      orderSummary += `${product} (${packSize}) - Qty: ${quantity}\n`;
+    }
+  });
+
+  if (orderSummary.trim() === "Order Summary:") {
+    alert("Please enter quantities for at least one product before submitting your order.");
+    return;
+  }
+
+  const mailtoLink = `mailto:sales@designateddrinks.ca?subject=New Wholesale Order&body=${encodeURIComponent(orderSummary)}`;
+  window.location.href = mailtoLink;
+});
 </script>
 
 </body>
