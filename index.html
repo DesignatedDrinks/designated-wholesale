@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Designated Drinks Wholesale</title>
+  <title>Designated Drinks Wholesale Portal</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -35,11 +35,19 @@
       max-width: 1200px;
       margin: auto;
     }
+    .page-title {
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 30px;
+      font-weight: bold;
+      color: #001f3f;
+    }
     .filters {
       display: flex;
       flex-wrap: wrap;
       gap: 20px;
       margin-bottom: 30px;
+      justify-content: center;
     }
     #searchBar, #styleFilter {
       flex: 1;
@@ -49,6 +57,15 @@
       border: 1px solid #ccc;
       border-radius: 8px;
       box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    }
+    .vendor-header {
+      margin-top: 60px;
+      margin-bottom: 20px;
+      font-size: 22px;
+      font-weight: bold;
+      color: #001f3f;
+      border-bottom: 2px solid #001f3f;
+      padding-bottom: 5px;
     }
     table {
       width: 100%;
@@ -87,15 +104,6 @@
       background: #f9f9f9;
       padding: 5px;
     }
-    .vendor-header {
-      margin-top: 60px;
-      margin-bottom: 20px;
-      font-size: 22px;
-      font-weight: bold;
-      color: #001f3f;
-      border-bottom: 2px solid #001f3f;
-      padding-bottom: 5px;
-    }
     footer {
       margin-top: 50px;
       text-align: center;
@@ -103,6 +111,8 @@
       color: #999;
       padding: 30px;
     }
+
+    /* MOBILE IMPROVEMENTS */
     @media (max-width: 768px) {
       header {
         flex-direction: column;
@@ -120,21 +130,30 @@
       }
       tr {
         margin-bottom: 20px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        padding: 20px;
       }
       td {
-        padding-left: 50%;
-        text-align: right;
-        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 10px;
       }
-      td::before {
-        position: absolute;
-        top: 18px;
-        left: 20px;
-        width: 45%;
-        white-space: nowrap;
+      td img {
+        height: 100px;
+        width: 100px;
+      }
+      td[data-label="Product"] {
         font-weight: bold;
-        color: #555;
-        content: attr(data-label);
+        font-size: 18px;
+      }
+      td[data-label="Wholesale Price"] {
+        color: #001f3f;
+        font-weight: bold;
+        font-size: 16px;
       }
     }
   </style>
@@ -151,6 +170,7 @@
 </header>
 
 <main>
+  <div class="page-title">Designated Drinks Wholesale Portal</div>
   <div class="filters">
     <input type="text" id="searchBar" placeholder="Search for a product...">
     <select id="styleFilter">
@@ -236,7 +256,10 @@ function populateStyleFilter(styles) {
   });
 }
 
+let cachedProducts = [];
+
 function displayProducts(products) {
+  cachedProducts = products; // Save all products for future filtering
   const productContainer = document.getElementById('productContainer');
   const grouped = {};
 
@@ -250,12 +273,20 @@ function displayProducts(products) {
   productContainer.innerHTML = "";
 
   for (const vendor in grouped) {
+    const vendorProducts = grouped[vendor];
+
     const vendorSection = document.createElement('div');
-    vendorSection.innerHTML = `<div class="vendor-header">${vendor}</div>`;
+    vendorSection.className = "vendor-section";
+    vendorSection.setAttribute('data-vendor', vendor);
+
+    const vendorHeader = document.createElement('div');
+    vendorHeader.className = "vendor-header";
+    vendorHeader.textContent = vendor;
+
     const table = document.createElement('table');
     const tbody = document.createElement('tbody');
 
-    grouped[vendor].forEach(product => {
+    vendorProducts.forEach(product => {
       const tr = document.createElement('tr');
       tr.setAttribute('data-style', product.style.toLowerCase());
       tr.innerHTML = `
@@ -269,36 +300,43 @@ function displayProducts(products) {
     });
 
     table.appendChild(tbody);
+    vendorSection.appendChild(vendorHeader);
     vendorSection.appendChild(table);
     productContainer.appendChild(vendorSection);
   }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  loadSheetData();
+function applyFilters() {
+  const searchValue = document.getElementById('searchBar').value.toLowerCase();
+  const selectedStyle = document.getElementById('styleFilter').value.toLowerCase();
+  const vendorSections = document.querySelectorAll('.vendor-section');
 
-  document.getElementById('searchBar').addEventListener('input', function(e) {
-    const searchValue = e.target.value.toLowerCase();
-    const rows = document.querySelectorAll('#productContainer tr');
+  vendorSections.forEach(section => {
+    const rows = section.querySelectorAll('tbody tr');
+    let hasVisible = false;
 
     rows.forEach(row => {
       const text = row.innerText.toLowerCase();
-      row.style.display = text.includes(searchValue) ? '' : 'none';
-    });
-  });
+      const matchesSearch = text.includes(searchValue);
+      const matchesStyle = !selectedStyle || row.getAttribute('data-style') === selectedStyle;
 
-  document.getElementById('styleFilter').addEventListener('change', function(e) {
-    const selected = e.target.value.toLowerCase();
-    const rows = document.querySelectorAll('#productContainer tr');
-
-    rows.forEach(row => {
-      if (!selected || row.getAttribute('data-style') === selected) {
+      if (matchesSearch && matchesStyle) {
         row.style.display = '';
+        hasVisible = true;
       } else {
         row.style.display = 'none';
       }
     });
+
+    section.style.display = hasVisible ? '' : 'none';
   });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadSheetData();
+
+  document.getElementById('searchBar').addEventListener('input', applyFilters);
+  document.getElementById('styleFilter').addEventListener('change', applyFilters);
 });
 </script>
 
