@@ -9,8 +9,8 @@
       font-family: 'Montserrat', sans-serif;
       margin: 0;
       padding: 0;
-      background-color: #ffffff;
-      color: #000000;
+      background-color: #f7f9fc;
+      color: #222;
     }
     header {
       background-color: #0a0a0a;
@@ -18,54 +18,96 @@
       padding: 30px 20px;
     }
     header img {
-      max-width: 180px;
+      max-width: 200px;
       height: auto;
       margin-bottom: 10px;
     }
     header h1 {
       color: white;
-      font-size: 24px;
-      margin: 0;
+      font-size: 28px;
+      margin-top: 10px;
     }
     main {
-      padding: 20px;
-      max-width: 1100px;
+      padding: 40px 20px;
+      max-width: 1200px;
       margin: auto;
     }
     input#searchBar {
       width: 100%;
-      padding: 10px;
-      margin-bottom: 20px;
-      font-size: 16px;
+      padding: 14px 20px;
+      margin-bottom: 30px;
+      font-size: 18px;
       border: 1px solid #ccc;
-      border-radius: 6px;
+      border-radius: 12px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
     }
     th, td {
-      border-bottom: 1px solid #ddd;
-      padding: 12px;
+      padding: 18px 15px;
       text-align: left;
       vertical-align: middle;
     }
     th {
       background-color: #001f3f;
       color: white;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      background-color: #fff;
+      font-size: 16px;
+      border-bottom: 1px solid #eee;
+    }
+    tr:hover td {
+      background-color: #f0f8ff;
     }
     td img {
       height: 80px;
       max-width: 80px;
       object-fit: contain;
+      border-radius: 8px;
+      background: #f9f9f9;
+      padding: 5px;
     }
     footer {
-      margin-top: 40px;
+      margin-top: 50px;
       text-align: center;
-      font-size: 12px;
-      color: #777;
+      font-size: 14px;
+      color: #999;
       padding: 20px;
+    }
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+      thead tr {
+        display: none;
+      }
+      tr {
+        margin-bottom: 15px;
+      }
+      td {
+        position: relative;
+        padding-left: 50%;
+        text-align: right;
+      }
+      td::before {
+        position: absolute;
+        top: 18px;
+        left: 20px;
+        width: 45%;
+        white-space: nowrap;
+        font-weight: bold;
+        content: attr(data-label);
+      }
     }
   </style>
 </head>
@@ -108,11 +150,11 @@ async function loadSheetData() {
     if (productTitle) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><img src="${imageUrl}" alt="${productTitle}"></td>
-        <td>${productTitle}</td>
-        <td>${packSize}</td>
-        <td>$${parseFloat(wholesalePrice).toFixed(2)}</td>
-        <td>$${parseFloat(price24Pack).toFixed(2)}</td>
+        <td data-label="Image"><img src="${imageUrl}" alt="${productTitle}"></td>
+        <td data-label="Product">${productTitle}</td>
+        <td data-label="Pack Size">${packSize}</td>
+        <td data-label="Wholesale Price">$${parseFloat(wholesalePrice).toFixed(2)}</td>
+        <td data-label="24-Pack Price">$${parseFloat(price24Pack).toFixed(2)}</td>
       `;
       tableBody.appendChild(tr);
     }
