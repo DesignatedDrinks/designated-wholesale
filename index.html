@@ -70,32 +70,29 @@
     /* Desktop Table */
     .desktop-table {
       width: 100%;
-      border-collapse: separate;
-      border-spacing: 0 15px;
+      border-collapse: collapse;
+      border-spacing: 0;
     }
     th {
       background: #001f3f;
       color: white;
       text-align: left;
-      padding: 18px 15px;
+      padding: 14px 10px;
       font-size: 14px;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-    tbody tr {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-      transition: 0.3s ease;
-    }
-    tbody tr:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
     td {
-      padding: 18px 15px;
+      padding: 14px 10px;
       font-size: 16px;
       vertical-align: middle;
+      background: white;
+      border-bottom: 1px solid #eee;
+    }
+    td img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
     }
     /* Mobile Cards */
     .mobile-cards {
@@ -104,7 +101,7 @@
     .product-card {
       background: white;
       border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       padding: 20px;
       margin-bottom: 20px;
       text-align: center;
@@ -115,17 +112,17 @@
       object-fit: contain;
       margin-bottom: 10px;
     }
-    .product-card .product-title {
-      font-size: 28px;
+    .product-title {
+      font-size: 30px;
       font-weight: bold;
       margin-bottom: 10px;
     }
-    .product-card .can-size {
-      font-size: 22px;
-      margin-bottom: 6px;
-    }
-    .product-card .price {
+    .can-size {
       font-size: 24px;
+      margin-bottom: 8px;
+    }
+    .price {
+      font-size: 26px;
       font-weight: bold;
       margin-bottom: 6px;
     }
@@ -139,8 +136,8 @@
       }
       .vendor-header {
         text-align: center;
-        font-size: 22px;
-        margin-top: 30px;
+        font-size: 24px;
+        margin-top: 20px;
       }
     }
     footer {
@@ -282,7 +279,7 @@ function displayProducts(products) {
       const table = document.createElement('table');
       table.className = "desktop-table";
       const thead = document.createElement('thead');
-      thead.innerHTML = `<tr><th>Product</th><th>Can Size</th><th>Can Wholesale Price</th><th>24-Pack Price</th></tr>`;
+      thead.innerHTML = `<tr><th>Image</th><th>Product</th><th>Can Size</th><th>Can Wholesale Price</th><th>24-Pack Price</th></tr>`;
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
@@ -291,6 +288,7 @@ function displayProducts(products) {
         const tr = document.createElement('tr');
         tr.setAttribute('data-style', product.style.toLowerCase());
         tr.innerHTML = `
+          <td><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
           <td>${product.cleanTitle}</td>
           <td>${product.canSize}</td>
           <td>$${parseFloat(product.canWholesalePrice).toFixed(2)}</td>
