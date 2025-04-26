@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <title>Designated Drinks Wholesale Pricing</title>
+  <meta name="description" content="Wholesale pricing for non-alcoholic beers, mocktails, and wines at Designated Drinks.">
+  <link rel="icon" href="dd-favicon.ico">
+  <meta property="og:title" content="Designated Drinks Wholesale">
+  <meta property="og:description" content="Shop wholesale non-alcoholic beverages from Canada's best brands.">
+  <meta property="og:image" content="https://designateddrinks.ca/og-image.jpg">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -19,8 +24,8 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      text-align: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      text-align: center;
     }
     .header-left img {
       max-width: 140px;
@@ -57,15 +62,28 @@
       border-radius: 8px;
       box-shadow: 0 1px 5px rgba(0,0,0,0.05);
     }
+    .sticky-banner {
+      position: sticky;
+      top: 0;
+      background: #001f3f;
+      color: white;
+      padding: 14px 20px;
+      font-size: 18px;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 30px;
+      z-index: 10;
+    }
     .vendor-header {
       margin-top: 40px;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
       font-size: 24px;
       font-weight: bold;
       color: #001f3f;
       border-bottom: 1px solid #cbd5e1;
       padding-bottom: 5px;
       text-align: left;
+      cursor: pointer;
     }
     /* Desktop Table */
     .desktop-table {
@@ -77,17 +95,17 @@
       background: #001f3f;
       color: white;
       text-align: left;
-      padding: 14px 10px;
-      font-size: 14px;
+      padding: 12px 8px;
+      font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
     td {
-      padding: 14px 10px;
-      font-size: 16px;
-      vertical-align: middle;
+      padding: 12px 8px;
+      font-size: 15px;
       background: white;
       border-bottom: 1px solid #eee;
+      vertical-align: middle;
     }
     td img {
       width: 80px;
@@ -116,18 +134,18 @@
       margin-bottom: 10px;
     }
     .product-title {
-      font-size: 30px;
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
-    .can-size {
-      font-size: 24px;
-      margin-bottom: 8px;
-    }
-    .price {
-      font-size: 26px;
+      font-size: 22px;
       font-weight: bold;
       margin-bottom: 6px;
+    }
+    .can-size {
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+    .price {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 4px;
     }
     /* Responsive */
     @media (max-width: 768px) {
@@ -143,6 +161,14 @@
         margin-top: 20px;
       }
     }
+    @media (max-width: 500px) {
+      .filters {
+        flex-direction: column;
+      }
+      .header-left img {
+        max-width: 100px;
+      }
+    }
     footer {
       margin-top: 50px;
       text-align: center;
@@ -152,6 +178,7 @@
     }
   </style>
 </head>
+
 <body>
 
 <header>
@@ -172,14 +199,11 @@
   </div>
 </header>
 
-
 <main>
 
-  <!-- 🚚 Minimum Order / Free Shipping Banner START -->
-  <div style="background: #001f3f; color: white; padding: 14px 20px; font-size: 18px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+  <div class="sticky-banner">
     🚚 <strong>Minimum Order: $250 CAD</strong> — Mix and match any products.<br>📦 <strong>Free shipping</strong> on orders over $250!
   </div>
-  <!-- 🚚 Minimum Order / Free Shipping Banner END -->
 
   <div class="filters">
     <input type="text" id="searchBar" placeholder="Search for a product...">
@@ -188,10 +212,11 @@
     </select>
   </div>
 
+  <div id="loading" style="text-align:center;margin-bottom:20px;">Loading products...</div>
+
   <div id="productContainer"></div>
 
 </main>
-
 
 <footer>
   &copy; 2025 Designated Drinks. All rights reserved.
@@ -199,61 +224,57 @@
 
 <script>
 async function loadSheetData() {
-  const response = await fetch('https://docs.google.com/spreadsheets/d/17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8/export?format=csv');
-  const text = await response.text();
-  const rows = text.split('\n').map(row => row.split(','));
+  try {
+    const response = await fetch('https://docs.google.com/spreadsheets/d/17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8/export?format=csv');
+    const text = await response.text();
+    const rows = text.split('\n').map(row => row.split(','));
 
-  const allProducts = [];
-  const styleCategories = {};
+    const allProducts = [];
+    const styleCategories = {};
 
-  for (let i = 1; i < rows.length; i++) {
-    const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack] = rows[i];
-    if (!productTitle) continue;
+    for (let i = 1; i < rows.length; i++) {
+      const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack] = rows[i];
+      if (!productTitle) continue;
 
-    const vendorMatch = productTitle.match(/^(.+?)\s\(/);
-    let vendor = vendorMatch ? vendorMatch[1] : 'Other';
-    vendor = vendor.trim();
+      const vendorMatch = productTitle.match(/^(.+?)\s\(/);
+      let vendor = vendorMatch ? vendorMatch[1] : 'Other';
+      vendor = vendor.trim();
 
-    const cleanTitle = productTitle.replace(/\(Non-Alcoholic\)/gi, '').trim();
-    const lowerTitle = cleanTitle.toLowerCase();
+      const cleanTitle = productTitle.replace(/\(Non-Alcoholic\)/gi, '').trim();
+      const lowerTitle = cleanTitle.toLowerCase();
 
-    let style = 'Other';
-    if (lowerTitle.includes('lager')) style = 'Lager';
-    else if (lowerTitle.includes('ipa')) style = 'IPA';
-    else if (lowerTitle.includes('pale ale')) style = 'Pale Ale';
-    else if (lowerTitle.includes('stout')) style = 'Stout';
-    else if (lowerTitle.includes('sour')) style = 'Sour';
-    else if (lowerTitle.includes('pilsner')) style = 'Pilsner';
-    else if (lowerTitle.includes('wheat')) style = 'Wheat';
-    else if (lowerTitle.includes('red ale')) style = 'Red Ale';
-    else if (lowerTitle.includes('blonde')) style = 'Blonde';
-    else if (lowerTitle.includes('amber')) style = 'Amber';
-    else if (lowerTitle.includes('porter')) style = 'Porter';
-    else if (lowerTitle.includes('saison')) style = 'Saison';
-    else if (lowerTitle.includes('hefeweizen')) style = 'Hefeweizen';
-    else if (lowerTitle.includes('kolsch')) style = 'Kolsch';
-    else if (lowerTitle.includes('cider')) style = 'Cider';
-    else if (lowerTitle.includes('mocktail') || lowerTitle.includes('cocktail') || lowerTitle.includes('gin') || lowerTitle.includes('tonic') || lowerTitle.includes('margarita') || lowerTitle.includes('negroni') || lowerTitle.includes('sangria')) style = 'Mocktails/Cocktails';
-    else if (lowerTitle.includes('wine') || lowerTitle.includes('rosé') || lowerTitle.includes('red wine') || lowerTitle.includes('white wine')) style = 'Wine';
-    else if (lowerTitle.includes('seltzer')) style = 'Seltzer';
-    else if (lowerTitle.includes('hard tea') || lowerTitle.includes('iced tea')) style = 'Hard Tea';
-    else if (lowerTitle.includes('kombucha')) style = 'Kombucha';
+      let style = 'Other';
+      if (lowerTitle.includes('lager')) style = 'Lager';
+      else if (lowerTitle.includes('ipa')) style = 'IPA';
+      else if (lowerTitle.includes('pale ale')) style = 'Pale Ale';
+      else if (lowerTitle.includes('stout')) style = 'Stout';
+      else if (lowerTitle.includes('sour')) style = 'Sour';
+      else if (lowerTitle.includes('pilsner')) style = 'Pilsner';
+      else if (lowerTitle.includes('wheat')) style = 'Wheat';
+      else if (lowerTitle.includes('mocktail') || lowerTitle.includes('cocktail') || lowerTitle.includes('gin') || lowerTitle.includes('tonic') || lowerTitle.includes('margarita') || lowerTitle.includes('negroni') || lowerTitle.includes('sangria')) style = 'Mocktails/Cocktails';
+      else if (lowerTitle.includes('wine') || lowerTitle.includes('rosé') || lowerTitle.includes('red wine') || lowerTitle.includes('white wine')) style = 'Wine';
 
-    allProducts.push({
-      vendor,
-      cleanTitle,
-      canSize,
-      canWholesalePrice,
-      price24Pack,
-      imageUrl,
-      style
-    });
+      allProducts.push({
+        vendor,
+        cleanTitle,
+        canSize,
+        canWholesalePrice,
+        price24Pack,
+        imageUrl,
+        style
+      });
 
-    styleCategories[style] = true;
+      styleCategories[style] = true;
+    }
+
+    populateStyleFilter(Object.keys(styleCategories).sort());
+    displayProducts(allProducts);
+    document.getElementById('loading').style.display = 'none';
+
+  } catch (error) {
+    document.getElementById('loading').textContent = 'Error loading products. Please contact sales@designateddrinks.ca.';
+    console.error(error);
   }
-
-  populateStyleFilter(Object.keys(styleCategories).sort());
-  displayProducts(allProducts);
 }
 
 function populateStyleFilter(styles) {
@@ -278,7 +299,6 @@ function displayProducts(products) {
   });
 
   container.innerHTML = "";
-
   const isMobile = window.innerWidth <= 768;
 
   for (const vendor in grouped) {
@@ -291,11 +311,14 @@ function displayProducts(products) {
     vendorHeader.textContent = vendor;
     vendorSection.appendChild(vendorHeader);
 
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = isMobile ? "mobile-cards" : "";
+
     if (!isMobile) {
       const table = document.createElement('table');
       table.className = "desktop-table";
       const thead = document.createElement('thead');
-      thead.innerHTML = `<tr><th>Image</th><th>Product</th><th>Can Size</th><th class="price-column">Can Wholesale Price</th><th class="price-column">24-Pack Price</th></tr>`;
+      thead.innerHTML = `<tr><th>Image</th><th>Product</th><th>Can Size</th><th class="price-column">Can Wholesale</th><th class="price-column">24-Pack</th></tr>`;
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
@@ -314,32 +337,34 @@ function displayProducts(products) {
       });
 
       table.appendChild(tbody);
-      vendorSection.appendChild(table);
-
+      contentWrapper.appendChild(table);
     } else {
-      const cardContainer = document.createElement('div');
-      cardContainer.className = "mobile-cards";
-
       grouped[vendor].forEach(product => {
         const card = document.createElement('div');
         card.className = "product-card";
         card.setAttribute('data-style', product.style.toLowerCase());
-
         card.innerHTML = `
           <img src="${product.imageUrl}" alt="${product.cleanTitle}">
           <div class="product-title">${product.cleanTitle}</div>
-          <div class="can-size">Can Size: ${product.canSize}</div>
-          <div class="price">Can Wholesale Price: $${parseFloat(product.canWholesalePrice).toFixed(2)}</div>
-          <div class="price">24-Pack Price: $${parseFloat(product.price24Pack).toFixed(2)}</div>
+          <div class="can-size">Size: ${product.canSize}</div>
+          <div class="price">Can: $${parseFloat(product.canWholesalePrice).toFixed(2)}</div>
+          <div class="price">24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}</div>
         `;
-        cardContainer.appendChild(card);
+        contentWrapper.appendChild(card);
       });
-
-      vendorSection.appendChild(cardContainer);
     }
 
+    vendorSection.appendChild(contentWrapper);
     container.appendChild(vendorSection);
   }
+
+  // Enable collapsible vendors
+  document.querySelectorAll('.vendor-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const next = header.nextElementSibling;
+      next.style.display = (next.style.display === 'none') ? 'block' : 'none';
+    });
+  });
 }
 
 function applyFilters() {
@@ -370,7 +395,6 @@ function applyFilters() {
 
 document.addEventListener('DOMContentLoaded', function() {
   loadSheetData();
-
   document.getElementById('searchBar').addEventListener('input', applyFilters);
   document.getElementById('styleFilter').addEventListener('change', applyFilters);
 });
