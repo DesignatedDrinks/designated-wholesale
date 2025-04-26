@@ -14,15 +14,21 @@
     }
     header {
       background: white;
-      padding: 20px 40px;
+      padding: 20px 30px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      text-align: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
-    header img {
-      max-width: 160px;
-      height: auto;
+    .header-left img {
+      max-width: 140px;
+    }
+    .header-center h1 {
+      font-size: 28px;
+      margin: 10px 0;
+      color: #001f3f;
     }
     .contact-info {
       text-align: right;
@@ -31,16 +37,9 @@
       color: #555;
     }
     main {
-      padding: 40px 20px;
+      padding: 30px 20px;
       max-width: 1200px;
       margin: auto;
-    }
-    .page-title {
-      text-align: center;
-      font-size: 28px;
-      margin-bottom: 30px;
-      font-weight: bold;
-      color: #001f3f;
     }
     .filters {
       display: flex;
@@ -117,7 +116,9 @@
       header {
         flex-direction: column;
         gap: 10px;
-        text-align: center;
+      }
+      .header-center h1 {
+        font-size: 22px;
       }
       .filters {
         flex-direction: column;
@@ -145,22 +146,28 @@
       td img {
         height: 100px;
         width: 100px;
+        margin-bottom: 10px;
       }
       td[data-label="Product"] {
         font-weight: bold;
-        font-size: 18px;
+        font-size: 20px;
       }
-      td[data-label="Wholesale Price"] {
-        color: #001f3f;
-        font-weight: bold;
-        font-size: 16px;
+      td[data-label="Wholesale Price"],
+      td[data-label="24-Pack Price"],
+      td[data-label="Pack Size"] {
+        font-size: 18px;
       }
     }
   </style>
 </head>
 <body>
 <header>
-  <img src="dd-logo.png" alt="Designated Drinks Logo">
+  <div class="header-left">
+    <img src="dd-logo.png" alt="Designated Drinks Logo">
+  </div>
+  <div class="header-center">
+    <h1>Designated Drinks Wholesale Portal</h1>
+  </div>
   <div class="contact-info">
     <strong>To order:</strong><br>
     📧 sales@designateddrinks.ca<br>
@@ -170,7 +177,6 @@
 </header>
 
 <main>
-  <div class="page-title">Designated Drinks Wholesale Portal</div>
   <div class="filters">
     <input type="text" id="searchBar" placeholder="Search for a product...">
     <select id="styleFilter">
@@ -185,6 +191,7 @@
 <footer>
   &copy; 2025 Designated Drinks. All rights reserved.
 </footer>
+
 <script>
 async function loadSheetData() {
   const response = await fetch('https://docs.google.com/spreadsheets/d/17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8/export?format=csv');
@@ -206,7 +213,6 @@ async function loadSheetData() {
     const cleanTitle = productTitle.replace(/\(Non-Alcoholic\)/gi, '').trim();
     const lowerTitle = cleanTitle.toLowerCase();
 
-    // Style detection
     let style = 'Other';
     if (lowerTitle.includes('lager')) style = 'Lager';
     else if (lowerTitle.includes('ipa')) style = 'IPA';
@@ -256,10 +262,7 @@ function populateStyleFilter(styles) {
   });
 }
 
-let cachedProducts = [];
-
 function displayProducts(products) {
-  cachedProducts = products; // Save all products for future filtering
   const productContainer = document.getElementById('productContainer');
   const grouped = {};
 
@@ -273,8 +276,6 @@ function displayProducts(products) {
   productContainer.innerHTML = "";
 
   for (const vendor in grouped) {
-    const vendorProducts = grouped[vendor];
-
     const vendorSection = document.createElement('div');
     vendorSection.className = "vendor-section";
     vendorSection.setAttribute('data-vendor', vendor);
@@ -286,7 +287,7 @@ function displayProducts(products) {
     const table = document.createElement('table');
     const tbody = document.createElement('tbody');
 
-    vendorProducts.forEach(product => {
+    grouped[vendor].forEach(product => {
       const tr = document.createElement('tr');
       tr.setAttribute('data-style', product.style.toLowerCase());
       tr.innerHTML = `
