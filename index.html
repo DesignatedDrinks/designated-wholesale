@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Designated Drinks Wholesale Portal</title>
+  <title>Designated Drinks Wholesale Pricing</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -67,7 +67,7 @@
       padding-bottom: 5px;
       text-align: left;
     }
-    /* Table view (Desktop) */
+    /* Desktop Table */
     .desktop-table {
       width: 100%;
       border-collapse: separate;
@@ -97,15 +97,7 @@
       font-size: 16px;
       vertical-align: middle;
     }
-    td img {
-      height: 70px;
-      width: 70px;
-      object-fit: contain;
-      border-radius: 8px;
-      background: #f9f9f9;
-      padding: 5px;
-    }
-    /* Mobile Card View */
+    /* Mobile Cards */
     .mobile-cards {
       display: none;
     }
@@ -124,21 +116,21 @@
       margin-bottom: 10px;
     }
     .product-card .product-title {
-      font-size: 24px;
+      font-size: 32px;
       font-weight: bold;
       margin-bottom: 8px;
     }
-    .product-card .pack-size {
-      font-size: 20px;
+    .product-card .can-size {
+      font-size: 24px;
       color: #555;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     .product-card .price {
-      font-size: 22px;
+      font-size: 28px;
       font-weight: bold;
       margin-bottom: 6px;
     }
-    /* Responsive: Hide table on mobile, show cards */
+    /* Responsive */
     @media (max-width: 768px) {
       .desktop-table {
         display: none;
@@ -168,7 +160,7 @@
     <img src="dd-logo.png" alt="Designated Drinks Logo">
   </div>
   <div class="header-center">
-    <h1>Designated Drinks Wholesale Portal</h1>
+    <h1>Designated Drinks Wholesale Pricing</h1>
   </div>
   <div class="contact-info">
     <strong>To order:</strong><br>
@@ -203,7 +195,7 @@ async function loadSheetData() {
   const styleCategories = {};
 
   for (let i = 1; i < rows.length; i++) {
-    const [productTitle, packSize, retailPrice, wholesalePrice, imageUrl, price24Pack] = rows[i];
+    const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack] = rows[i];
 
     if (!productTitle) continue;
 
@@ -239,8 +231,8 @@ async function loadSheetData() {
     allProducts.push({
       vendor,
       cleanTitle,
-      packSize,
-      wholesalePrice,
+      canSize,
+      canWholesalePrice,
       price24Pack,
       imageUrl,
       style
@@ -291,7 +283,7 @@ function displayProducts(products) {
       const table = document.createElement('table');
       table.className = "desktop-table";
       const thead = document.createElement('thead');
-      thead.innerHTML = `<tr><th>Image</th><th>Product</th><th>Pack Size</th><th>Wholesale Price</th><th>24-Pack Price</th></tr>`;
+      thead.innerHTML = `<tr><th>Product</th><th>Can Size</th><th>Can Wholesale Price</th><th>24-Pack Price</th></tr>`;
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
@@ -300,10 +292,9 @@ function displayProducts(products) {
         const tr = document.createElement('tr');
         tr.setAttribute('data-style', product.style.toLowerCase());
         tr.innerHTML = `
-          <td><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
           <td>${product.cleanTitle}</td>
-          <td>${product.packSize}</td>
-          <td>$${parseFloat(product.wholesalePrice).toFixed(2)}</td>
+          <td>${product.canSize}</td>
+          <td>$${parseFloat(product.canWholesalePrice).toFixed(2)}</td>
           <td>$${parseFloat(product.price24Pack).toFixed(2)}</td>
         `;
         tbody.appendChild(tr);
@@ -325,9 +316,9 @@ function displayProducts(products) {
         card.innerHTML = `
           <img src="${product.imageUrl}" alt="${product.cleanTitle}">
           <div class="product-title">${product.cleanTitle}</div>
-          <div class="pack-size">${product.packSize}</div>
-          <div class="price">Wholesale: $${parseFloat(product.wholesalePrice).toFixed(2)}</div>
-          <div class="price">24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}</div>
+          <div class="can-size">Can Size: ${product.canSize}</div>
+          <div class="price">Can Wholesale Price: $${parseFloat(product.canWholesalePrice).toFixed(2)}</div>
+          <div class="price">24-Pack Price: $${parseFloat(product.price24Pack).toFixed(2)}</div>
         `;
         cardContainer.appendChild(card);
       });
