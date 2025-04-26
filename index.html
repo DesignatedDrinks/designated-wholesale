@@ -37,7 +37,7 @@
       color: #555;
     }
     main {
-      padding: 30px 20px;
+      padding: 40px 20px;
       max-width: 1200px;
       margin: auto;
     }
@@ -58,13 +58,14 @@
       box-shadow: 0 1px 5px rgba(0,0,0,0.05);
     }
     .vendor-header {
-      margin-top: 60px;
+      margin-top: 40px;
       margin-bottom: 20px;
-      font-size: 22px;
+      font-size: 24px;
       font-weight: bold;
       color: #001f3f;
-      border-bottom: 2px solid #001f3f;
+      border-bottom: 1px solid #cbd5e1;
       padding-bottom: 5px;
+      text-align: left;
     }
     table {
       width: 100%;
@@ -111,17 +112,26 @@
       padding: 30px;
     }
 
-    /* MOBILE IMPROVEMENTS */
+    /* MOBILE FINAL POLISH */
     @media (max-width: 768px) {
+      main {
+        padding: 20px 10px;
+      }
       header {
         flex-direction: column;
         gap: 10px;
+        padding: 20px 10px;
+      }
+      .filters {
+        flex-direction: column;
+        padding: 0 10px;
       }
       .header-center h1 {
         font-size: 22px;
       }
-      .filters {
-        flex-direction: column;
+      .vendor-header {
+        font-size: 26px;
+        text-align: center;
       }
       table, thead, tbody, th, td, tr {
         display: block;
@@ -144,8 +154,8 @@
         padding: 10px;
       }
       td img {
-        height: 100px;
-        width: 100px;
+        height: 120px;
+        width: 120px;
         margin-bottom: 10px;
       }
       td[data-label="Product"] {
@@ -191,7 +201,6 @@
 <footer>
   &copy; 2025 Designated Drinks. All rights reserved.
 </footer>
-
 <script>
 async function loadSheetData() {
   const response = await fetch('https://docs.google.com/spreadsheets/d/17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8/export?format=csv');
