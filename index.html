@@ -28,15 +28,16 @@
     input#searchBar {
       width: 100%;
       padding: 10px;
-      font-size: 16px;
       margin-bottom: 20px;
+      font-size: 16px;
       border: 1px solid #ccc;
-      border-radius: 8px;
+      border-radius: 6px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
+      margin-top: 10px;
+      overflow-x: auto;
     }
     th {
       background-color: #001f3f;
@@ -59,6 +60,29 @@
       font-size: 12px;
       color: #777;
       padding: 30px;
+    }
+    @media screen and (max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+      thead tr {
+        display: none;
+      }
+      tr {
+        margin-bottom: 15px;
+      }
+      td {
+        padding: 10px;
+        text-align: right;
+        position: relative;
+      }
+      td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 10px;
+        font-weight: bold;
+        text-align: left;
+      }
     }
   </style>
 </head>
@@ -106,29 +130,31 @@ async function loadSheetData() {
     if (productTitle) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><img src="${imageUrl}" alt="${productTitle}"></td>
-        <td>${productTitle}</td>
-        <td>${packSize}</td>
-        <td>${formattedUnit}</td>
-        <td>${formattedCase}</td>
+        <td data-label="Image"><img src="${imageUrl}" alt="${productTitle}"></td>
+        <td data-label="Product">${productTitle}</td>
+        <td data-label="Pack Size">${packSize}</td>
+        <td data-label="Wholesale Price">${formattedUnit}</td>
+        <td data-label="24-Pack Price">${formattedCase}</td>
       `;
       tableBody.appendChild(tr);
     }
   }
 }
 
-// 🔎 Live Search Bar functionality
-document.getElementById('searchBar').addEventListener('input', function(e) {
-  const searchValue = e.target.value.toLowerCase();
-  const rows = document.querySelectorAll('#product-table tbody tr');
-  
-  rows.forEach(row => {
-    const text = row.innerText.toLowerCase();
-    row.style.display = text.includes(searchValue) ? '' : 'none';
+// Load data first THEN activate search
+document.addEventListener('DOMContentLoaded', function() {
+  loadSheetData();
+
+  document.getElementById('searchBar').addEventListener('input', function(e) {
+    const searchValue = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#product-table tbody tr');
+
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(searchValue) ? '' : 'none';
+    });
   });
 });
-
-window.addEventListener('DOMContentLoaded', loadSheetData);
 </script>
 
 </body>
