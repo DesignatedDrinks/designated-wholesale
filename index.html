@@ -44,6 +44,7 @@
       color: white;
       padding: 12px;
       text-align: left;
+      cursor: pointer;
     }
     td {
       padding: 12px;
@@ -95,11 +96,10 @@
     <table id="product-table">
       <thead>
         <tr>
-          <th>Image</th>
-          <th>Product</th>
-          <th>Pack Size</th>
-          <th>Wholesale Price</th>
-          <th>24-Pack Price</th>
+          <th onclick="sortTable(1)">Product</th>
+          <th onclick="sortTable(2)">Pack Size</th>
+          <th onclick="sortTable(3)">Wholesale Price</th>
+          <th onclick="sortTable(4)">24-Pack Price</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -130,7 +130,6 @@ async function loadSheetData() {
     if (productTitle) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td data-label="Image"><img src="${imageUrl}" alt="${productTitle}"></td>
         <td data-label="Product">${productTitle}</td>
         <td data-label="Pack Size">${packSize}</td>
         <td data-label="Wholesale Price">${formattedUnit}</td>
@@ -141,7 +140,7 @@ async function loadSheetData() {
   }
 }
 
-// Load data first THEN activate search
+// 🔎 Live Search Bar functionality
 document.addEventListener('DOMContentLoaded', function() {
   loadSheetData();
 
@@ -155,6 +154,47 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 });
+
+// 🔄 Sorting functionality
+function sortTable(n) {
+  const table = document.getElementById("product-table");
+  let switching = true;
+  let dir = "asc";
+  let switchcount = 0;
+
+  while (switching) {
+    switching = false;
+    const rows = table.rows;
+
+    for (let i = 1; i < (rows.length - 1); i++) {
+      let shouldSwitch = false;
+      const x = rows[i].getElementsByTagName("TD")[n-1];
+      const y = rows[i + 1].getElementsByTagName("TD")[n-1];
+
+      if (dir === "asc") {
+        if (x.innerText.toLowerCase() > y.innerText.toLowerCase()) {
+          shouldSwitch = true;
+          break;
+        }
+      } else if (dir === "desc") {
+        if (x.innerText.toLowerCase() < y.innerText.toLowerCase()) {
+          shouldSwitch = true;
+          break;
+        }
+      }
+    }
+    if (shouldSwitch) {
+      rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+      switching = true;
+      switchcount++;
+    } else {
+      if (switchcount === 0 && dir === "asc") {
+        dir = "desc";
+        switching = true;
+      }
+    }
+  }
+}
 </script>
 
 </body>
