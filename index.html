@@ -10,13 +10,23 @@
       margin: 0;
       padding: 0;
       background-color: #ffffff;
-      color: #000;
+      color: #000000;
     }
     header {
       background-color: #0a0a0a;
-      color: white;
       text-align: center;
-      padding: 20px;
+      padding: 20px 0;
+    }
+    header img {
+      max-width: 200px;
+      height: auto;
+      margin-bottom: 10px;
+    }
+    header h1 {
+      color: white;
+      font-weight: 700;
+      font-size: 24px;
+      margin: 0;
     }
     main {
       padding: 20px;
@@ -40,30 +50,16 @@
       border-bottom: 1px solid #ddd;
       padding: 12px;
       text-align: left;
+      vertical-align: middle;
     }
     th {
       background-color: #001f3f;
       color: white;
-      cursor: pointer;
     }
-    td input.quantity {
-      width: 60px;
-      padding: 5px;
-      font-size: 14px;
-    }
-    #submitOrder {
-      margin-top: 30px;
-      padding: 15px 25px;
-      background-color: #001f3f;
-      color: white;
-      border: none;
-      font-size: 18px;
-      width: 100%;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    #submitOrder:hover {
-      background-color: #003366;
+    td img {
+      height: 80px;
+      max-width: 80px;
+      object-fit: contain;
     }
     footer {
       margin-top: 40px;
@@ -76,23 +72,23 @@
 </head>
 <body>
   <header>
-    <h1>Wholesale Pricing – Designated Drinks</h1>
+    <img src="DD LOGO.png" alt="Designated Drinks Logo">
+    <h1>Wholesale Pricing</h1>
   </header>
   <main>
     <input type="text" id="searchBar" placeholder="Search products...">
     <table id="product-table">
       <thead>
         <tr>
+          <th>Image</th>
           <th>Product</th>
           <th>Pack Size</th>
           <th>Wholesale Price</th>
           <th>24-Pack Price</th>
-          <th>Quantity</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
-    <button id="submitOrder">Submit Order</button>
   </main>
   <footer>
     &copy; 2025 Designated Drinks. All rights reserved.
@@ -113,18 +109,17 @@ async function loadSheetData() {
     if (productTitle) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
+        <td><img src="${imageUrl}" alt="${productTitle}"></td>
         <td>${productTitle}</td>
         <td>${packSize}</td>
         <td>$${parseFloat(wholesalePrice).toFixed(2)}</td>
         <td>$${parseFloat(price24Pack).toFixed(2)}</td>
-        <td><input class="quantity" type="number" min="0" placeholder="0"></td>
       `;
       tableBody.appendChild(tr);
     }
   }
 }
 
-// Search Bar
 document.addEventListener('DOMContentLoaded', function() {
   loadSheetData();
 
@@ -137,51 +132,6 @@ document.addEventListener('DOMContentLoaded', function() {
       row.style.display = text.includes(searchValue) ? '' : 'none';
     });
   });
-});
-
-// Submit Order Functionality
-document.getElementById('submitOrder').addEventListener('click', function() {
-  const rows = document.querySelectorAll('#product-table tbody tr');
-  let orderSummary = "Wholesale Order Summary:\n\n";
-  let totalQuantity = 0;
-  let totalCost = 0;
-
-  let itemCount = 1;
-  rows.forEach(row => {
-    const quantityInput = row.querySelector('input.quantity');
-    const quantity = parseInt(quantityInput.value, 10);
-
-    if (quantity && quantity > 0) {
-      const product = row.children[0].innerText.trim();
-      const packSize = row.children[1].innerText.trim();
-      const wholesalePrice = parseFloat(row.children[2].innerText.replace('$', ''));
-      const casePrice = row.children[3].innerText.trim();
-
-      const lineTotal = (wholesalePrice * quantity);
-
-      orderSummary += `${itemCount}. ${product} (${packSize})\n`;
-      orderSummary += `   Qty: ${quantity}\n`;
-      orderSummary += `   Wholesale Price: $${wholesalePrice.toFixed(2)}\n`;
-      orderSummary += `   24-Pack Price: ${casePrice}\n\n`;
-
-      totalQuantity += quantity;
-      totalCost += lineTotal;
-      itemCount++;
-    }
-  });
-
-  if (totalQuantity === 0) {
-    alert("Please enter quantities for at least one product before submitting your order.");
-    return;
-  }
-
-  orderSummary += "--------------------------\n";
-  orderSummary += `Total Items Ordered: ${totalQuantity}\n`;
-  orderSummary += `Estimated Total Cost: $${totalCost.toFixed(2)}\n`;
-  orderSummary += "--------------------------\n";
-
-  const mailtoLink = `mailto:sales@designateddrinks.ca?subject=New Wholesale Order&body=${encodeURIComponent(orderSummary)}`;
-  window.location.href = mailtoLink;
 });
 </script>
 
