@@ -66,6 +66,7 @@
           <th>Product</th>
           <th>Pack Size</th>
           <th>Wholesale Price</th>
+          <th>24-Pack Price</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -85,15 +86,22 @@ async function loadSheetData() {
   tableBody.innerHTML = "";
 
   for (let i = 1; i < rows.length; i++) {
-    const [productTitle, packSize, retailPrice, wholesalePrice, imageUrl] = rows[i];
+    const [productTitle, packSize, retailPrice, wholesalePrice, imageUrl, price24Pack] = rows[i];
 
-    if (productTitle && wholesalePrice) {
+    const unitPrice = parseFloat(wholesalePrice);
+    const casePrice = parseFloat(price24Pack);
+
+    const formattedUnit = !isNaN(unitPrice) ? `$${unitPrice.toFixed(2)}` : '--';
+    const formattedCase = !isNaN(casePrice) ? `$${casePrice.toFixed(2)}` : '--';
+
+    if (productTitle) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><img src="${imageUrl}" alt="${productTitle}" style="height:80px;max-width:80px;object-fit:contain;"></td>
+        <td><img src="${imageUrl}" alt="${productTitle}"></td>
         <td>${productTitle}</td>
         <td>${packSize}</td>
-        <td>$${parseFloat(wholesalePrice).toFixed(2)}</td>
+        <td>${formattedUnit}</td>
+        <td>${formattedCase}</td>
       `;
       tableBody.appendChild(tr);
     }
