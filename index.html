@@ -301,9 +301,9 @@ async function loadSheetData() {
     const allProducts = [];
     const styleCategories = {};
 
-    for (let i = 1; i < rows.length; i++) {
-      const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack] = rows[i];
-      if (!productTitle) continue;
+ for (let i = 1; i < rows.length; i++) {
+  const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack, status] = rows[i];
+  if (!productTitle || status.trim().toLowerCase() !== 'yes') continue;
 
       const vendorMatch = productTitle.match(/^(.+?)\s\(/);
       let vendor = vendorMatch ? vendorMatch[1] : 'Other';
