@@ -10,7 +10,6 @@
   <meta property="og:image" content="https://designateddrinks.ca/og-image.jpg">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    /* ----------- BASIC RESET ----------- */
     body {
       font-family: 'Montserrat', sans-serif;
       margin: 0;
@@ -47,7 +46,6 @@
       max-width: 1200px;
       margin: auto;
     }
-    /* ----------- UI ENHANCEMENTS ----------- */
     .sticky-banner {
       position: sticky;
       top: 0;
@@ -96,7 +94,6 @@
       padding: 10px;
       border-radius: 8px;
     }
-    /* Tables and Cards */
     .desktop-table {
       width: 100%;
       border-collapse: collapse;
@@ -164,28 +161,15 @@
       color: #999;
       padding: 30px;
     }
-    /* Responsive tweaks */
     @media (max-width: 768px) {
-      .desktop-table {
-        display: none !important;
-      }
-      .mobile-cards {
-        display: block !important;
-      }
-      .vendor-header {
-        text-align: center;
-        font-size: 26px;
-      }
+      .desktop-table { display: none !important; }
+      .mobile-cards { display: block !important; }
+      .vendor-header { text-align: center; font-size: 26px; }
     }
     @media (max-width: 500px) {
-      .filters {
-        flex-direction: column;
-      }
-      .header-left img {
-        max-width: 100px;
-      }
+      .filters { flex-direction: column; }
+      .header-left img { max-width: 100px; }
     }
-    /* Modal styles */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -230,7 +214,6 @@
 </head>
 
 <body>
-
 <header>
   <div class="header-left">
     <img src="dd-logo.png" alt="Designated Drinks Logo">
@@ -250,16 +233,13 @@
 </header>
 
 <main>
-
   <div class="sticky-banner">
     🚚 <strong>Minimum Order: $250 CAD</strong> — Mix and match any products.<br>📦 <strong>Free shipping</strong> on orders over $250!
   </div>
 
   <div class="filters">
     <input type="text" id="searchBar" placeholder="Search for a product...">
-    <select id="styleFilter">
-      <option value="">Filter by style</option>
-    </select>
+    <select id="styleFilter"><option value="">Filter by style</option></select>
     <select id="sortPrice">
       <option value="">Sort by Price</option>
       <option value="low-high">Price: Low to High</option>
@@ -267,10 +247,8 @@
   </div>
 
   <div id="loading" style="text-align:center;margin-bottom:20px;">Loading products...</div>
-
   <div id="productContainer"></div>
 
-  <!-- Modal Popup -->
   <div id="modalOverlay" class="modal-overlay">
     <div class="modal-content">
       <span class="modal-close" id="modalClose">&times;</span>
@@ -283,14 +261,13 @@
     </div>
   </div>
 
-  <!-- Back to Top -->
   <button id="backToTop">⬆️</button>
-
 </main>
 
 <footer>
   &copy; 2025 Designated Drinks. All rights reserved.
 </footer>
+
 <script>
 async function loadSheetData() {
   try {
@@ -301,14 +278,12 @@ async function loadSheetData() {
     const allProducts = [];
     const styleCategories = {};
 
- for (let i = 1; i < rows.length; i++) {
-  const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack, status] = rows[i];
-  if (!productTitle || status.trim().toLowerCase() !== 'yes') continue;
+    for (let i = 1; i < rows.length; i++) {
+      const [productTitle, canSize, retailPrice, canWholesalePrice, imageUrl, price24Pack, status] = rows[i];
+      if (!productTitle || status.trim().toLowerCase() !== 'yes') continue;
 
       const vendorMatch = productTitle.match(/^(.+?)\s\(/);
       let vendor = vendorMatch ? vendorMatch[1] : 'Other';
-      vendor = vendor.trim();
-
       const cleanTitle = productTitle.replace(/\(Non-Alcoholic\)/gi, '').trim();
       const lowerTitle = cleanTitle.toLowerCase();
 
@@ -323,26 +298,15 @@ async function loadSheetData() {
       else if (lowerTitle.includes('mocktail') || lowerTitle.includes('cocktail') || lowerTitle.includes('gin') || lowerTitle.includes('tonic') || lowerTitle.includes('margarita') || lowerTitle.includes('negroni') || lowerTitle.includes('sangria')) style = 'Mocktails/Cocktails';
       else if (lowerTitle.includes('wine') || lowerTitle.includes('rosé') || lowerTitle.includes('red wine') || lowerTitle.includes('white wine')) style = 'Wine';
 
-      allProducts.push({
-        vendor,
-        cleanTitle,
-        canSize,
-        retailPrice,
-        canWholesalePrice,
-        price24Pack,
-        imageUrl,
-        style
-      });
-
+      allProducts.push({ vendor, cleanTitle, canSize, retailPrice, canWholesalePrice, price24Pack, imageUrl, style });
       styleCategories[style] = true;
     }
 
     populateStyleFilter(Object.keys(styleCategories).sort());
     displayProducts(allProducts);
     document.getElementById('loading').style.display = 'none';
-
   } catch (error) {
-    document.getElementById('loading').textContent = 'Error loading products. Please contact sales@designateddrinks.ca.';
+    document.getElementById('loading').textContent = 'Error loading products.';
     console.error(error);
   }
 }
@@ -359,68 +323,68 @@ function populateStyleFilter(styles) {
 
 function displayProducts(products) {
   const container = document.getElementById('productContainer');
+  container.innerHTML = '';
+  const isMobile = window.innerWidth <= 768;
   const grouped = {};
 
   products.forEach(product => {
-    if (!grouped[product.vendor]) {
-      grouped[product.vendor] = [];
-    }
+    if (!grouped[product.vendor]) grouped[product.vendor] = [];
     grouped[product.vendor].push(product);
   });
 
-  container.innerHTML = "";
-  const isMobile = window.innerWidth <= 768;
-
   for (const vendor in grouped) {
     const vendorSection = document.createElement('div');
-    vendorSection.className = "vendor-section";
-    vendorSection.setAttribute('data-vendor', vendor);
+    vendorSection.className = 'vendor-section';
 
     const vendorHeader = document.createElement('div');
-    vendorHeader.className = "vendor-header";
+    vendorHeader.className = 'vendor-header';
     vendorHeader.textContent = vendor;
     vendorSection.appendChild(vendorHeader);
 
     const contentWrapper = document.createElement('div');
-    contentWrapper.className = isMobile ? "mobile-cards" : "";
+    contentWrapper.className = isMobile ? 'mobile-cards' : '';
 
     if (!isMobile) {
       const table = document.createElement('table');
-      table.className = "desktop-table";
-      const thead = document.createElement('thead');
-      thead.innerHTML = <tr><th>Image</th><th>Product</th><th>Can Size</th><th class="price-column">Wholesale</th><th class="price-column">24-Pack</th></tr>;
-      table.appendChild(thead);
-
-      const tbody = document.createElement('tbody');
-
-      grouped[vendor].forEach(product => {
-        const tr = document.createElement('tr');
-        tr.setAttribute('data-style', product.style.toLowerCase());
-        tr.innerHTML = 
-          <td><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
-          <td>${product.cleanTitle}</td>
-          <td>${product.canSize}</td>
-          <td class="price-column">$${parseFloat(product.canWholesalePrice).toFixed(2)}</td>
-          <td class="price-column">$${parseFloat(product.price24Pack).toFixed(2)}</td>
-        ;
-        tr.addEventListener('click', () => openModal(product));
-        tbody.appendChild(tr);
+      table.className = 'desktop-table';
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Image</th>
+            <th>Product</th>
+            <th>Can Size</th>
+            <th class="price-column">Wholesale</th>
+            <th class="price-column">24-Pack</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${grouped[vendor].map(product => `
+            <tr data-style="${product.style.toLowerCase()}">
+              <td><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
+              <td>${product.cleanTitle}</td>
+              <td>${product.canSize}</td>
+              <td class="price-column">$${parseFloat(product.canWholesalePrice).toFixed(2)}</td>
+              <td class="price-column">$${parseFloat(product.price24Pack).toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      `;
+      table.querySelectorAll('tr[data-style]').forEach((row, i) => {
+        row.addEventListener('click', () => openModal(grouped[vendor][i]));
       });
-
-      table.appendChild(tbody);
       contentWrapper.appendChild(table);
     } else {
       grouped[vendor].forEach(product => {
         const card = document.createElement('div');
-        card.className = "product-card";
+        card.className = 'product-card';
         card.setAttribute('data-style', product.style.toLowerCase());
-        card.innerHTML = 
+        card.innerHTML = `
           <img src="${product.imageUrl}" alt="${product.cleanTitle}">
           <div class="product-title">${product.cleanTitle}</div>
           <div class="can-size">Size: ${product.canSize}</div>
           <div class="price">Can: $${parseFloat(product.canWholesalePrice).toFixed(2)}</div>
           <div class="price">24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}</div>
-        ;
+        `;
         card.addEventListener('click', () => openModal(product));
         contentWrapper.appendChild(card);
       });
@@ -430,7 +394,6 @@ function displayProducts(products) {
     container.appendChild(vendorSection);
   }
 
-  // Enable collapsible vendor sections
   document.querySelectorAll('.vendor-header').forEach(header => {
     header.addEventListener('click', () => {
       const next = header.nextElementSibling;
@@ -443,49 +406,40 @@ function applyFilters() {
   const searchValue = document.getElementById('searchBar').value.toLowerCase();
   const selectedStyle = document.getElementById('styleFilter').value.toLowerCase();
   const sortOrder = document.getElementById('sortPrice').value;
-  const vendorSections = document.querySelectorAll('.vendor-section');
 
-  vendorSections.forEach(section => {
-    const rows = section.querySelectorAll('.desktop-table tr, .product-card');
+  document.querySelectorAll('.vendor-section').forEach(section => {
+    const rows = section.querySelectorAll('.desktop-table tr[data-style], .product-card');
     let hasVisible = false;
-
     rows.forEach(row => {
-      const text = row.innerText.toLowerCase();
-      const matchesSearch = text.includes(searchValue);
+      const matchesSearch = row.innerText.toLowerCase().includes(searchValue);
       const matchesStyle = !selectedStyle || row.getAttribute('data-style') === selectedStyle;
-
-      if (matchesSearch && matchesStyle) {
-        row.style.display = '';
-        hasVisible = true;
-      } else {
-        row.style.display = 'none';
-      }
+      row.style.display = matchesSearch && matchesStyle ? '' : 'none';
+      if (matchesSearch && matchesStyle) hasVisible = true;
     });
-
     section.style.display = hasVisible ? '' : 'none';
   });
 
   if (sortOrder === 'low-high') {
     const products = Array.from(document.querySelectorAll('.product-card, .desktop-table tbody tr'));
     products.sort((a, b) => {
-      const aPrice = parseFloat(a.querySelector('.price-column')?.textContent.replace('$','') || a.querySelector('.price')?.textContent.replace(/[^0-9.]/g, ''));
-      const bPrice = parseFloat(b.querySelector('.price-column')?.textContent.replace('$','') || b.querySelector('.price')?.textContent.replace(/[^0-9.]/g, ''));
+      const aPrice = parseFloat(a.querySelector('.price')?.textContent?.replace(/[^0-9.]/g, '') || a.querySelector('.price-column')?.textContent?.replace('$','') || 0);
+      const bPrice = parseFloat(b.querySelector('.price')?.textContent?.replace(/[^0-9.]/g, '') || b.querySelector('.price-column')?.textContent?.replace('$','') || 0);
       return aPrice - bPrice;
     });
     products.forEach(p => p.parentNode.appendChild(p));
   }
 }
 
-// Modal Handling
 function openModal(product) {
   document.getElementById('modalImage').src = product.imageUrl;
   document.getElementById('modalTitle').textContent = product.cleanTitle;
-  document.getElementById('modalCanSize').textContent = Can Size: ${product.canSize};
-  document.getElementById('modalRetailPrice').textContent = Retail: $${parseFloat(product.retailPrice).toFixed(2)};
-  document.getElementById('modalWholesalePrice').textContent = Wholesale: $${parseFloat(product.canWholesalePrice).toFixed(2)};
-  document.getElementById('modal24PackPrice').textContent = 24-Pack: $${parseFloat(product.price24Pack).toFixed(2)};
+  document.getElementById('modalCanSize').textContent = `Can Size: ${product.canSize}`;
+  document.getElementById('modalRetailPrice').textContent = `Retail: $${parseFloat(product.retailPrice).toFixed(2)}`;
+  document.getElementById('modalWholesalePrice').textContent = `Wholesale: $${parseFloat(product.canWholesalePrice).toFixed(2)}`;
+  document.getElementById('modal24PackPrice').textContent = `24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}`;
   document.getElementById('modalOverlay').style.display = 'flex';
 }
+
 document.getElementById('modalClose').addEventListener('click', () => {
   document.getElementById('modalOverlay').style.display = 'none';
 });
@@ -500,26 +454,20 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Back to Top Button
-const backToTop = document.getElementById('backToTop');
 window.addEventListener('scroll', () => {
-  if (window.scrollY > 300) {
-    backToTop.style.display = 'block';
-  } else {
-    backToTop.style.display = 'none';
-  }
+  const btn = document.getElementById('backToTop');
+  btn.style.display = window.scrollY > 300 ? 'block' : 'none';
 });
-backToTop.addEventListener('click', () => {
+document.getElementById('backToTop').addEventListener('click', () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', () => {
   loadSheetData();
   document.getElementById('searchBar').addEventListener('input', applyFilters);
   document.getElementById('styleFilter').addEventListener('change', applyFilters);
   document.getElementById('sortPrice').addEventListener('change', applyFilters);
 });
 </script>
-
 </body>
 </html>
