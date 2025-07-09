@@ -388,7 +388,7 @@ function displayProducts(products) {
       const table = document.createElement('table');
       table.className = "desktop-table";
       const thead = document.createElement('thead');
-      thead.innerHTML = `<tr><th>Image</th><th>Product</th><th>Can Size</th><th class="price-column">Wholesale</th><th class="price-column">24-Pack</th></tr>`;
+      thead.innerHTML = <tr><th>Image</th><th>Product</th><th>Can Size</th><th class="price-column">Wholesale</th><th class="price-column">24-Pack</th></tr>;
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
@@ -396,13 +396,13 @@ function displayProducts(products) {
       grouped[vendor].forEach(product => {
         const tr = document.createElement('tr');
         tr.setAttribute('data-style', product.style.toLowerCase());
-        tr.innerHTML = `
+        tr.innerHTML = 
           <td><img src="${product.imageUrl}" alt="${product.cleanTitle}"></td>
           <td>${product.cleanTitle}</td>
           <td>${product.canSize}</td>
           <td class="price-column">$${parseFloat(product.canWholesalePrice).toFixed(2)}</td>
           <td class="price-column">$${parseFloat(product.price24Pack).toFixed(2)}</td>
-        `;
+        ;
         tr.addEventListener('click', () => openModal(product));
         tbody.appendChild(tr);
       });
@@ -414,13 +414,13 @@ function displayProducts(products) {
         const card = document.createElement('div');
         card.className = "product-card";
         card.setAttribute('data-style', product.style.toLowerCase());
-        card.innerHTML = `
+        card.innerHTML = 
           <img src="${product.imageUrl}" alt="${product.cleanTitle}">
           <div class="product-title">${product.cleanTitle}</div>
           <div class="can-size">Size: ${product.canSize}</div>
           <div class="price">Can: $${parseFloat(product.canWholesalePrice).toFixed(2)}</div>
           <div class="price">24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}</div>
-        `;
+        ;
         card.addEventListener('click', () => openModal(product));
         contentWrapper.appendChild(card);
       });
@@ -480,10 +480,10 @@ function applyFilters() {
 function openModal(product) {
   document.getElementById('modalImage').src = product.imageUrl;
   document.getElementById('modalTitle').textContent = product.cleanTitle;
-  document.getElementById('modalCanSize').textContent = `Can Size: ${product.canSize}`;
-  document.getElementById('modalRetailPrice').textContent = `Retail: $${parseFloat(product.retailPrice).toFixed(2)}`;
-  document.getElementById('modalWholesalePrice').textContent = `Wholesale: $${parseFloat(product.canWholesalePrice).toFixed(2)}`;
-  document.getElementById('modal24PackPrice').textContent = `24-Pack: $${parseFloat(product.price24Pack).toFixed(2)}`;
+  document.getElementById('modalCanSize').textContent = Can Size: ${product.canSize};
+  document.getElementById('modalRetailPrice').textContent = Retail: $${parseFloat(product.retailPrice).toFixed(2)};
+  document.getElementById('modalWholesalePrice').textContent = Wholesale: $${parseFloat(product.canWholesalePrice).toFixed(2)};
+  document.getElementById('modal24PackPrice').textContent = 24-Pack: $${parseFloat(product.price24Pack).toFixed(2)};
   document.getElementById('modalOverlay').style.display = 'flex';
 }
 document.getElementById('modalClose').addEventListener('click', () => {
