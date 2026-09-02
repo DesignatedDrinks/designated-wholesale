@@ -1,111 +1,120 @@
 # Designated Drinks Wholesale
 
-The canonical Designated Drinks wholesale ordering experience:
+Canonical wholesale ordering system for Designated Drinks.
 
-- Production: https://designateddrinks.github.io/designated-wholesale/
-- Product and order source of truth: the existing **Designated Wholesale** Google Sheet
-- Checkout/backend source: `apps-script/Code.gs`
-- Independent Shopify inventory sync: `apps-script/ShopifyInventorySync.gs`
+- Production site: https://designateddrinks.github.io/designated-wholesale/
+- Frontend: `index.html` + `app.js` + `styles.css` + `catalogue-ux.css`
+- Checkout backend: `apps-script/Code.gs`
+- Independent Shopify inventory mirror: `apps-script/ShopifyInventorySync.gs`
+- Product/order data: existing **Designated Wholesale** Google Sheet
 
 ## Architecture
 
-```
-GitHub Pages catalogue + cart + checkout
-                ↓
-Google Apps Script checkout web app
-                ↓
-Designated Wholesale Google Sheet
-  ├─ Sheet1 (products)
-  ├─ Orders
-  ├─ Order Items
-  ├─ Settings
-  └─ Logs
-                ↑
-Standalone daily Shopify inventory sync
-                ↑
+```text
 Shopify Admin API
+      ↓ daily inventory mirror
+Google Apps Script inventory sync
+      ↓
+Designated Wholesale / Sheet1
+      ↓
+GitHub Pages catalogue + cart + checkout
+      ↓
+Google Apps Script checkout backend
+      ↓
+Orders + Order Items + email confirmations
 ```
 
-The Shopify inventory sync is deliberately independent of the checkout Apps Script. It can run in its own Apps Script project and does not require the checkout backend's `CONFIG` object or helper functions.
+There is one frontend controller. Do not reintroduce the retired `checkout-flow.js`, `checkout-transport.js`, or `catalogue-ux.js` patch layers.
 
-## Checkout Apps Script
+## Inventory rules
 
-Keep `apps-script/Code.gs` in the Apps Script project used by the production wholesale web-app endpoint. Deploy a new version of that existing Web app only when checkout/backend web-app code changes.
+Shopify is authoritative for product identity, product title, vendor, image, retail price and inventory.
 
-Do not create another wholesale spreadsheet or another wholesale web-app endpoint.
+Singles are the physical inventory source of truth. Wholesale cases contain 24 units.
 
-## Independent Shopify inventory sync
+Every successful inventory sync rebuilds `Sheet1` from eligible Shopify products:
 
-### Governing rule
+- Shopify product must be ACTIVE.
+- Product must be an eligible beverage.
+- Product must have one unambiguous single can/bottle variant.
+- Available singles must be at least 24.
+- `Wholesale Cases Available = floor(available singles / 24)`.
+- Products below one complete case are not written to `Sheet1` and therefore do not appear on the wholesale site.
+- Products automatically reappear when Shopify inventory returns to 24+ singles.
+- Shopify Product ID is retained as the durable identity key.
+- Shopify's exact product title is used on the wholesale site.
 
-**Shopify product identity and Shopify product titles are authoritative.**
+The frontend reads `Wholesale Cases Available` and prevents customers from selecting more cases than are shown available. The checkout backend revalidates the same limit against `Sheet1` before accepting the order.
 
-The first safe match is established by one of these deterministic signals only:
+## Frontend behaviour
 
-1. a stored Shopify Product ID;
-2. the unique Shopify featured-image URL already used by the wholesale row;
-3. an exact normalized Shopify product title.
+`app.js` owns catalogue, filters, cart, checkout, tax preview, dialog lifecycle and order submission.
 
-There is no fuzzy title matching. Once matched, the Shopify Product ID is stored permanently and column A is rewritten to Shopify's exact current title on every successful sync. That means future Shopify title changes automatically flow into wholesale without breaking product identity.
+Key UX/reliability rules:
 
-### Shopify app
+- Product cards are created once and reused when filtering/sorting.
+- Search, category, brewery and price/name sorting do not rebuild the full catalogue unnecessarily.
+- Catalogue data is refreshed from the Sheet export, with API fallback and a short session cache for fast repeat navigation.
+- Long product names wrap naturally instead of being ellipsized.
+- Product images are lazy-loaded and asynchronously decoded.
+- Cart quantities are capped by live wholesale case availability.
+- Cart items can be adjusted directly in the order summary or review dialog.
+- Removing the final item from checkout closes the dialog and always releases page scroll/body lock.
+- Checkout and success dialogs share one lock-state controller so closing with buttons, Escape or browser page restoration cannot leave the page frozen.
+- Checkout remembers repeat customer/contact/address details locally but clears order-specific PO/notes after success.
 
-Create an app in Shopify's Dev Dashboard for the Designated Drinks store, release a version, and install it on the store with only these Admin API scopes:
+## Checkout and tax
+
+The checkout backend is `apps-script/Code.gs` and should be deployed as the existing production Web app. Do not create another endpoint.
+
+GST/HST is calculated from the delivery province; pickup is treated as Ontario. The backend recalculates tax server-side rather than trusting the browser.
+
+The backend also:
+
+- validates current product availability and pricing under a script lock;
+- rejects quantities above `Wholesale Cases Available`;
+- writes the order and order items before notifying the browser of saved status;
+- sets durable `stage: saved` status immediately after persistence, before email delivery, so checkout can complete quickly;
+- sends internal and customer confirmation emails after the order has safely persisted;
+- preserves idempotency using `submissionId`.
+
+When `apps-script/Code.gs` changes, update the existing checkout Apps Script project and deploy a **new version of the existing Web app deployment** so its URL remains unchanged.
+
+Recommended backend verification after updating Apps Script:
+
+1. `setupSystem()`
+2. `testTaxRules()`
+3. `testInventoryGuard()`
+4. `testSetup()`
+5. Deploy → Manage deployments → existing Web app → Edit → New version → Deploy
+
+## Independent Shopify sync setup
+
+The inventory sync can live in a separate Apps Script project and is independent of the checkout backend.
+
+Required Script Properties:
+
+- `SHOPIFY_SHOP` = `designateddrinks`
+- `SHOPIFY_CLIENT_ID` = Shopify Dev Dashboard app Client ID
+- `SHOPIFY_CLIENT_SECRET` = Shopify Dev Dashboard app Client secret
+
+Required Shopify Admin API scopes:
 
 - `read_products`
 - `read_inventory`
 
-The sync uses Shopify's client-credentials grant. It exchanges the Client ID and Client secret for a fresh short-lived Admin API access token whenever it runs.
+Run once:
 
-### Apps Script project
+1. `testShopifyInventoryConnection()`
+2. `setupShopifyInventorySync()`
+3. `syncShopifyWholesaleInventory()`
 
-Create or use a separate Google Apps Script project for the inventory sync. Its entire `Code.gs` can be the contents of:
+The setup function creates the daily trigger for roughly 6:00 AM America/Toronto.
 
-`apps-script/ShopifyInventorySync.gs`
-
-The sync file is self-contained. Do not paste the checkout backend `CONFIG` object into it and do not combine the two files just to satisfy dependencies.
-
-### Script Properties
-
-In the inventory-sync Apps Script project, open **Project Settings → Script Properties** and add:
-
-- `SHOPIFY_SHOP` = `designateddrinks`
-- `SHOPIFY_CLIENT_ID` = the Shopify Dev Dashboard Client ID
-- `SHOPIFY_CLIENT_SECRET` = the Shopify Dev Dashboard Client secret
-
-Never put the Client secret into GitHub or browser JavaScript.
-
-### Turn on the daily sync
-
-Run these functions in order:
-
-1. `testShopifyInventoryConnection()` — should return `status: success`.
-2. `setupShopifyInventorySync()` — verifies the connection, prepares hidden sync columns N:S, and creates the daily trigger for about 6:00 AM America/Toronto.
-3. `syncShopifyWholesaleInventory()` — runs the first inventory refresh immediately.
-4. `getLastShopifyInventorySyncResult()` — returns the latest run summary.
-5. `diagnoseShopifyInventorySync()` — safe diagnostic output showing configuration/trigger state without revealing the Client secret.
-
-The sync treats rows already present in `Sheet1` as the wholesale whitelist. It does not add or delete wholesale rows and does not change pricing, formulas, categories, SKUs, case formats, or sort order.
-
-For each eligible single-unit wholesale row it:
-
-- identifies the Shopify product by Product ID, unique featured image, or exact normalized title only;
-- stores the Shopify Product ID as the permanent identity key;
-- overwrites column A with Shopify's exact current product title;
-- uses the matching base can/bottle/single variant inventory when available;
-- calculates `Wholesale Cases Available = floor(available units / case size)`;
-- can use a true Shopify case variant directly when the exact wholesale case size exists;
-- sets `Status` to `yes` only when at least one full wholesale case is available;
-- sets `Status` to `no` when a product is unavailable, unmatched, ambiguous, or cannot be represented safely;
-- records diagnostics in hidden columns N:S;
-- records each run in the existing `Logs` tab when present;
-- emails `sales@designateddrinks.ca` if the sync itself fails.
-
-The sync fetches the complete Shopify inventory snapshot before changing customer-visible status. It fails closed rather than guessing.
-
-## Local verification
+## Tests
 
 ```bash
-node --test tests/app.test.js
-python3 -m http.server 4173
+npm test
 ```
+
+The regression suite covers CSV parsing, Shopify-backed product normalization, case availability caps, catalogue filtering/sorting, Canadian postal codes, GST/HST rules, structured checkout validation, quantity bounds and dialog/body-lock behaviour.
