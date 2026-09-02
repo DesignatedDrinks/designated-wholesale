@@ -54,7 +54,7 @@
       ".checkout-fast-intro p{margin:4px 0 0;color:var(--muted);font-size:.82rem}",
       ".checkout-required-note{flex:0 0 auto;color:var(--muted);font-size:.72rem;font-weight:700}",
       ".checkout-contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}",
-      ".checkout-contact-grid .company-field{grid-column:1/-1}",
+      ".checkout-contact-grid .company-field,.checkout-contact-grid .phone-field{grid-column:1/-1}",
       ".checkout-form .field{display:grid;gap:5px;min-width:0}",
       ".checkout-form .field>span{font-size:.76rem;font-weight:800;color:var(--navy-900)}",
       ".checkout-form .field em{font-style:normal;color:var(--muted);font-weight:500}",
@@ -88,7 +88,7 @@
       ".review-totals #tax-destination{display:block;margin-top:2px;color:var(--muted);font-size:.66rem;font-weight:500}",
       ".checkout-form .place-order{margin-top:0;min-height:52px}",
       "#delivery-address[hidden],#delivery-province[hidden],#delivery-tax-label[hidden],#delivery-tax-rate[hidden]{display:none!important}",
-      "@media(max-width:760px){.checkout-contact-grid,.address-grid,.optional-order-fields,.fulfilment-choice{grid-template-columns:1fr}.checkout-contact-grid .company-field,.address-grid .street-field,.address-grid .unit-field,.fulfilment-choice legend{grid-column:auto}.delivery-card{padding:12px}.checkout-fast-intro{display:block}.checkout-required-note{display:none}}"
+      "@media(max-width:760px){.checkout-contact-grid,.address-grid,.optional-order-fields,.fulfilment-choice{grid-template-columns:1fr}.checkout-contact-grid .company-field,.checkout-contact-grid .phone-field,.address-grid .street-field,.address-grid .unit-field,.fulfilment-choice legend{grid-column:auto}.delivery-card{padding:12px}.checkout-fast-intro{display:block}.checkout-required-note{display:none}}"
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -105,7 +105,7 @@
         '<label class="field company-field"><span>Company</span><input id="company-name" name="companyName" type="text" autocomplete="organization" maxlength="160" required><small class="field-error"></small></label>',
         '<label class="field"><span>Contact</span><input id="contact-name" name="fullName" type="text" autocomplete="name" maxlength="120" required><small class="field-error"></small></label>',
         '<label class="field"><span>Email</span><input id="email" name="email" type="email" autocomplete="email" maxlength="200" required><small class="field-error"></small></label>',
-        '<label class="field"><span>Phone</span><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required><small class="field-error"></small></label>',
+        '<label class="field phone-field"><span>Phone</span><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required><small class="field-error"></small></label>',
       '</div>',
       '<fieldset class="fulfilment-choice"><legend>Receive order</legend>',
         '<label><input type="radio" name="fulfilment" value="Delivery" checked><span><strong>Delivery</strong><small>Ship to your business.</small></span></label>',
@@ -227,14 +227,11 @@
     if (destination) destination.textContent = rule
       ? (currentFulfilment() === "Pickup" ? "Ontario pickup" : rule.name + " delivery")
       : "Select delivery province";
-    if (taxNode && rule) {
-      const next = formatMoney(estimate.tax);
-      if (taxNode.textContent !== next) taxNode.textContent = next;
-    }
-    if (totalNode && rule) {
-      const nextTotal = formatMoney(estimate.total);
-      if (totalNode.textContent !== nextTotal) totalNode.textContent = nextTotal;
-    }
+
+    const nextTax = rule ? formatMoney(estimate.tax) : "—";
+    const nextTotal = rule ? formatMoney(estimate.total) : formatMoney(estimate.subtotal);
+    if (taxNode && taxNode.textContent !== nextTax) taxNode.textContent = nextTax;
+    if (totalNode && totalNode.textContent !== nextTotal) totalNode.textContent = nextTotal;
   }
 
   function saveAddressDraft() {
