@@ -1,5 +1,14 @@
 /* Wholesale catalogue UX upgrade — layered after styles.css */
 
+/*
+ * Author CSS such as .empty-state { display:grid } can override the browser's
+ * built-in hidden attribute. Make hidden a hard UI contract everywhere so
+ * empty states, carts and conditional panels never render when JS hides them.
+ */
+[hidden] {
+  display: none !important;
+}
+
 .catalogue-toolbar {
   grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
   align-items: center;
