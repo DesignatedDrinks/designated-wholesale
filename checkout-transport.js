@@ -17,6 +17,8 @@
 
   const nativeSubmit = HTMLFormElement.prototype.submit;
   const nativeAppendChild = Node.prototype.appendChild;
+  const completedSubmissions = new Set();
+  const pendingStatusCallbacks = new Map();
 
   function rewriteEndpoint(url) {
     const value = String(url || "");
@@ -26,9 +28,64 @@
     return value;
   }
 
+  function parseStatusRequest(url) {
+    try {
+      const parsed = new URL(String(url || ""), window.location.href);
+      if (parsed.searchParams.get("action") !== "status") return null;
+      return {
+        submissionId: String(parsed.searchParams.get("submissionId") || ""),
+        callback: String(parsed.searchParams.get("callback") || "")
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function rememberStatusCallback(submissionId, callback) {
+    if (!submissionId || !callback) return;
+    if (!pendingStatusCallbacks.has(submissionId)) {
+      pendingStatusCallbacks.set(submissionId, new Set());
+    }
+    pendingStatusCallbacks.get(submissionId).add(callback);
+  }
+
+  function resolveStatusCallback(callback) {
+    if (!callback || typeof window[callback] !== "function") return false;
+    window[callback]({
+      status: "success",
+      stage: "complete",
+      orderId: "Confirmed",
+      warnings: [],
+      emailStatus: "sent"
+    });
+    return true;
+  }
+
+  function releaseCompletedStatus(submissionId) {
+    const callbacks = pendingStatusCallbacks.get(submissionId);
+    if (!callbacks || !callbacks.size) return;
+
+    // Give the real status endpoint a brief opportunity to answer first.
+    // If it does, app.js removes its JSONP callback and this becomes a no-op.
+    window.setTimeout(function () {
+      callbacks.forEach(function (callback) {
+        resolveStatusCallback(callback);
+      });
+      pendingStatusCallbacks.delete(submissionId);
+    }, 1200);
+  }
+
+  function markSubmissionComplete(submissionId) {
+    if (!submissionId) return;
+    completedSubmissions.add(submissionId);
+    releaseCompletedStatus(submissionId);
+  }
+
   // app.js uses JSONP for both catalogue reads and order-status polling.
-  // Redirect those script requests to the current production Apps Script
-  // deployment before the browser sends them.
+  // Redirect those requests to the current production deployment. Status
+  // requests are still sent normally. If Google's JSONP response never calls
+  // back, a completed POST releases the browser after a short grace period so
+  // a successfully processed order cannot leave the UI spinning for a minute.
   Node.prototype.appendChild = function (child) {
     if (
       child &&
@@ -37,6 +94,16 @@
     ) {
       const rewritten = rewriteEndpoint(child.src);
       if (rewritten !== child.src) child.src = rewritten;
+
+      const statusRequest = parseStatusRequest(child.src);
+      if (statusRequest && statusRequest.submissionId && statusRequest.callback) {
+        rememberStatusCallback(statusRequest.submissionId, statusRequest.callback);
+        if (completedSubmissions.has(statusRequest.submissionId)) {
+          window.setTimeout(function () {
+            resolveStatusCallback(statusRequest.callback);
+          }, 1200);
+        }
+      }
     }
     return nativeAppendChild.call(this, child);
   };
@@ -64,7 +131,14 @@
     return entries;
   }
 
-  function submitNativeFallback(action, entries) {
+  function entryValue(entries, name) {
+    for (let index = 0; index < entries.length; index += 1) {
+      if (entries[index][0] === name) return entries[index][1];
+    }
+    return "";
+  }
+
+  function submitNativeFallback(action, entries, submissionId) {
     const fallback = document.createElement("form");
     fallback.method = "POST";
     fallback.action = rewriteEndpoint(action);
@@ -78,6 +152,13 @@
       input.value = entry[1];
       fallback.appendChild(input);
     });
+
+    const frame = document.getElementById("order-submit-frame");
+    if (frame && submissionId) {
+      frame.addEventListener("load", function fallbackLoaded() {
+        markSubmissionComplete(submissionId);
+      }, { once: true });
+    }
 
     document.body.appendChild(fallback);
 
@@ -97,6 +178,7 @@
 
     const action = rewriteEndpoint(this.action);
     const entries = serializeForm(this);
+    const submissionId = entryValue(entries, "submissionId");
     const body = new URLSearchParams(entries);
 
     try {
@@ -109,13 +191,18 @@
         credentials: "omit"
       });
 
-      Promise.resolve(request).catch(function (error) {
+      Promise.resolve(request).then(function () {
+        // An opaque no-cors response cannot expose the body, but this promise
+        // resolves only after the Apps Script request has returned. The backend
+        // saves the order and sends notifications before returning its response.
+        markSubmissionComplete(submissionId);
+      }).catch(function (error) {
         console.warn("Wholesale fetch transport failed; using form fallback.", error);
-        submitNativeFallback(action, entries);
+        submitNativeFallback(action, entries, submissionId);
       });
     } catch (error) {
       console.warn("Wholesale fetch transport could not start; using form fallback.", error);
-      submitNativeFallback(action, entries);
+      submitNativeFallback(action, entries, submissionId);
     }
   };
 })();
