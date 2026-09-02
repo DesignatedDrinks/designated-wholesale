@@ -49,15 +49,44 @@
     pendingStatusCallbacks.get(submissionId).add(callback);
   }
 
+  function currentCheckoutEstimate() {
+    try {
+      if (window.DDWCheckoutTax && typeof window.DDWCheckoutTax.getEstimate === "function") {
+        const estimate = window.DDWCheckoutTax.getEstimate() || {};
+        return {
+          subtotal: Number(estimate.subtotal) || 0,
+          tax: Number(estimate.tax) || 0,
+          hst: Number(estimate.tax) || 0,
+          total: Number(estimate.total) || 0,
+          province: String(estimate.province || ""),
+          provinceName: String(estimate.provinceName || ""),
+          taxLabel: String(estimate.taxLabel || ""),
+          taxRate: Number(estimate.taxRate) || 0
+        };
+      }
+    } catch (error) {
+      console.warn("Could not read checkout tax estimate.", error);
+    }
+    return {};
+  }
+
+  function currentCaseCount() {
+    const node = document.getElementById("review-case-count");
+    const match = String(node && node.textContent || "").match(/\d+/);
+    return match ? Number(match[0]) : 0;
+  }
+
   function resolveStatusCallback(callback) {
     if (!callback || typeof window[callback] !== "function") return false;
-    window[callback]({
+    const estimate = currentCheckoutEstimate();
+    window[callback](Object.assign({
       status: "success",
       stage: "complete",
       orderId: "Confirmed",
+      totalCases: currentCaseCount(),
       warnings: [],
       emailStatus: "sent"
-    });
+    }, estimate));
     return true;
   }
 
