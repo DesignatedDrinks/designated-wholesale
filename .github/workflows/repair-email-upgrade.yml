@@ -1,0 +1,39 @@
+name: Repair email upgrade guard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .repair-email-upgrade
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Repair and retrigger
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/upgrade-wholesale-emails.yml')
+          s=p.read_text(encoding='utf-8')
+          old='        shell: python\n        run: |\n'
+          new='        shell: python {0}\n        run: |\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'python shell anchor count: {s.count(old)}')
+          p.write_text(s.replace(old,new,1), encoding='utf-8')
+          Path('.email-template-upgrade').write_text('retry wholesale email upgrade\n', encoding='utf-8')
+          PY
+          rm -f .repair-email-upgrade .github/workflows/repair-email-upgrade.yml
+          git config user.name "DesignatedDrinks"
+          git config user.email "designateddrinksonline@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Repair wholesale email upgrade guard"
+          git push origin HEAD:main
