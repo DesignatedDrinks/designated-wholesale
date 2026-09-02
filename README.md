@@ -36,6 +36,18 @@ Do not create another wholesale spreadsheet or another wholesale web-app endpoin
 
 ## Independent Shopify inventory sync
 
+### Governing rule
+
+**Shopify product identity and Shopify product titles are authoritative.**
+
+The first safe match is established by one of these deterministic signals only:
+
+1. a stored Shopify Product ID;
+2. the unique Shopify featured-image URL already used by the wholesale row;
+3. an exact normalized Shopify product title.
+
+There is no fuzzy title matching. Once matched, the Shopify Product ID is stored permanently and column A is rewritten to Shopify's exact current title on every successful sync. That means future Shopify title changes automatically flow into wholesale without breaking product identity.
+
 ### Shopify app
 
 Create an app in Shopify's Dev Dashboard for the Designated Drinks store, release a version, and install it on the store with only these Admin API scopes:
@@ -68,28 +80,28 @@ Never put the Client secret into GitHub or browser JavaScript.
 Run these functions in order:
 
 1. `testShopifyInventoryConnection()` — should return `status: success`.
-2. `setupShopifyInventorySync()` — verifies the connection, prepares hidden sync columns N:R, and creates the daily trigger for about 6:00 AM America/Toronto.
+2. `setupShopifyInventorySync()` — verifies the connection, prepares hidden sync columns N:S, and creates the daily trigger for about 6:00 AM America/Toronto.
 3. `syncShopifyWholesaleInventory()` — runs the first inventory refresh immediately.
 4. `getLastShopifyInventorySyncResult()` — returns the latest run summary.
 5. `diagnoseShopifyInventorySync()` — safe diagnostic output showing configuration/trigger state without revealing the Client secret.
 
-The sync treats rows already present in `Sheet1` as the wholesale whitelist. It does not add or delete wholesale rows and does not change pricing, formulas, images, categories, SKUs, case formats, or sort order.
+The sync treats rows already present in `Sheet1` as the wholesale whitelist. It does not add or delete wholesale rows and does not change pricing, formulas, categories, SKUs, case formats, or sort order.
 
 For each eligible single-unit wholesale row it:
 
-- matches the wholesale product to Shopify conservatively;
+- identifies the Shopify product by Product ID, unique featured image, or exact normalized title only;
+- stores the Shopify Product ID as the permanent identity key;
+- overwrites column A with Shopify's exact current product title;
 - uses the matching base can/bottle/single variant inventory when available;
 - calculates `Wholesale Cases Available = floor(available units / case size)`;
 - can use a true Shopify case variant directly when the exact wholesale case size exists;
 - sets `Status` to `yes` only when at least one full wholesale case is available;
-- sets `Status` to `no` when the matched inventory cannot make one complete case;
-- leaves `Status` unchanged when the product or inventory variant cannot be matched safely;
-- leaves wholesale rows that are themselves multipacks unchanged;
-- records diagnostics in hidden columns N:R;
+- sets `Status` to `no` when a product is unavailable, unmatched, ambiguous, or cannot be represented safely;
+- records diagnostics in hidden columns N:S;
 - records each run in the existing `Logs` tab when present;
-- emails `sales@designateddrinks.ca` if the sync fails.
+- emails `sales@designateddrinks.ca` if the sync itself fails.
 
-The sync fetches the complete Shopify inventory snapshot before changing customer-visible status. If Shopify authentication or inventory retrieval fails, it does not intentionally change the wholesale `Status` column.
+The sync fetches the complete Shopify inventory snapshot before changing customer-visible status. It fails closed rather than guessing.
 
 ## Local verification
 
