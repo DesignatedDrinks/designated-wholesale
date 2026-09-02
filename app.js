@@ -19,7 +19,7 @@
     catalogueCacheKey: "ddw-wholesale-catalogue-v3",
     catalogueCacheMs: 5 * 60 * 1000,
     requestTimeoutMs: 10000,
-    statusRequestTimeoutMs: 2500,
+    statusRequestTimeoutMs: 1500,
     orderConfirmTimeoutMs: 22000,
     statusPollMs: 450
   });
@@ -1096,51 +1096,50 @@
   }
 
   function isStatusTransportError(error) {
-  const message = error && error.message ? String(error.message) : String(error || "");
-  return /The request could not be completed\.|The request timed out\./i.test(message);
-}
-
-function transportConfirmedStatus() {
-  return {
-    status: "success",
-    stage: "transport-confirmed",
-    orderId: "Confirmed",
-    emailStatus: "sent",
-    transportConfirmed: true
-  };
-}
-
-async function pollOrderStatus(getPostState) {
-  const startedAt = Date.now();
-  let lastError = null;
-  await wait(140);
-  while (Date.now() - startedAt < CONFIG.orderConfirmTimeoutMs) {
-    const postState = typeof getPostState === "function" ? getPostState() : null;
-    if (postState && postState.error) throw postState.error;
-    try {
-      const status = await jsonp(CONFIG.endpoint, {
-action: "status",
-submissionId: state.submissionId,
-_: Date.now()
-      }, CONFIG.statusRequestTimeoutMs);
-      if (status && status.status === "error") throw new Error(status.message || "The order could not be processed.");
-      if (status && status.status === "success") return status;
-      if (status && status.stage === "saved" && status.orderId) return status;
-      lastError = null;
-    } catch (error) {
-      lastError = error;
-      if (error && /could not be processed|missing|required|unavailable|valid|only \d+ case/i.test(error.message || "")) throw error;
-      const currentPostState = typeof getPostState === "function" ? getPostState() : null;
-      if (currentPostState && currentPostState.completed && !currentPostState.error && isStatusTransportError(error)) {
-console.warn("Status callback failed after completed order POST; using POST completion as confirmation.", error);
-return transportConfirmedStatus();
-      }
-    }
-    await wait(CONFIG.statusPollMs);
+    const message = error && error.message ? String(error.message) : String(error || "");
+    return /The request could not be completed\.|The request timed out\./i.test(message);
   }
-  throw lastError || new Error("We couldn't confirm the order yet. Your cart is still saved; try the button again safely.");
-}
 
+  function transportConfirmedStatus() {
+    return {
+      status: "success",
+      stage: "transport-confirmed",
+      orderId: "Confirmed",
+      emailStatus: "sent",
+      transportConfirmed: true
+    };
+  }
+
+  async function pollOrderStatus(getPostState) {
+    const startedAt = Date.now();
+    let lastError = null;
+    await wait(140);
+    while (Date.now() - startedAt < CONFIG.orderConfirmTimeoutMs) {
+      const postState = typeof getPostState === "function" ? getPostState() : null;
+      if (postState && postState.error) throw postState.error;
+      try {
+        const status = await jsonp(CONFIG.endpoint, {
+          action: "status",
+          submissionId: state.submissionId,
+          _: Date.now()
+        }, CONFIG.statusRequestTimeoutMs);
+        if (status && status.status === "error") throw new Error(status.message || "The order could not be processed.");
+        if (status && status.status === "success") return status;
+        if (status && status.stage === "saved" && status.orderId) return status;
+        lastError = null;
+      } catch (error) {
+        lastError = error;
+        if (error && /could not be processed|missing|required|unavailable|valid|only \d+ case/i.test(error.message || "")) throw error;
+        const currentPostState = typeof getPostState === "function" ? getPostState() : null;
+        if (currentPostState && currentPostState.completed && !currentPostState.error && isStatusTransportError(error)) {
+          console.warn("Status callback failed after completed order POST; using POST completion as confirmation.", error);
+          return transportConfirmedStatus();
+        }
+      }
+      await wait(CONFIG.statusPollMs);
+    }
+    throw lastError || new Error("We couldn't confirm the order yet. Your cart is still saved; try the button again safely.");
+  }
   function resetTransientCheckout() {
     elements["checkout-form"].reset();
     setFormAlert("");
@@ -1202,12 +1201,12 @@ return transportConfirmedStatus();
     if (!state.submissionId) state.submissionId = createSubmissionId();
     setSubmitting(true, "Recording order…");
     const postState = { completed: false, error: null };
-  const body = buildOrderBody(data, totals);
-  postOrder(body).then(function (result) {
-    postState.completed = Boolean(result);
-  }).catch(function (error) {
-    postState.error = error;
-  });
+    const body = buildOrderBody(data, totals);
+    postOrder(body).then(function (result) {
+      postState.completed = Boolean(result);
+    }).catch(function (error) {
+      postState.error = error;
+    });
 
     try {
       const status = await pollOrderStatus(function () { return postState; });
