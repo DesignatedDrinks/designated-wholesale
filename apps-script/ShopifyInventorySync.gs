@@ -1,23 +1,17 @@
 /**
  * Designated Drinks Wholesale — independent Shopify inventory sync.
  *
- * This file is intentionally self-contained. It can live in its own Google
- * Apps Script project and does NOT depend on the wholesale web-app Code.gs.
+ * Shopify is the authority for product identity and product titles.
+ * This file is self-contained and runs entirely inside Google Apps Script.
  *
  * Required Script Properties:
- *   SHOPIFY_SHOP          designateddrinks   (or designateddrinks.myshopify.com)
+ *   SHOPIFY_SHOP          designateddrinks (or designateddrinks.myshopify.com)
  *   SHOPIFY_CLIENT_ID     Shopify Dev Dashboard app Client ID
  *   SHOPIFY_CLIENT_SECRET Shopify Dev Dashboard app Client secret
  *
- * Required Shopify app scopes:
+ * Required Shopify scopes:
  *   read_products
  *   read_inventory
- *
- * Setup:
- *   1. Add the three Script Properties above.
- *   2. Run testShopifyInventoryConnection().
- *   3. Run setupShopifyInventorySync().
- *   4. Run syncShopifyWholesaleInventory() once to verify the first sync.
  */
 const SHOPIFY_SYNC_CONFIG = Object.freeze({
   SPREADSHEET_ID: "17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8",
@@ -35,6 +29,7 @@ const SHOPIFY_SYNC_CONFIG = Object.freeze({
   FIRST_DATA_ROW: 2,
   COL_TITLE: 1,
   COL_PACK_SIZE: 2,
+  COL_IMAGE_URL: 5,
   COL_STATUS: 7,
   COL_BRAND: 9,
   COL_CASE_FORMAT: 12,
@@ -43,14 +38,15 @@ const SHOPIFY_SYNC_CONFIG = Object.freeze({
   COL_CASES_AVAILABLE: 16,
   COL_LAST_SYNC: 17,
   COL_SYNC_STATUS: 18,
+  COL_SHOPIFY_PRODUCT_ID: 19,
   DEFAULT_CASE_SIZE: 24,
   MAX_PAGES: 50
 });
 
-
 function setupShopifyInventorySync() {
   const connection = testShopifyInventoryConnection();
-  ensureShopifySyncColumns_();
+  const spreadsheet = openWholesaleSpreadsheet_();
+  ensureShopifySyncColumns_(getWholesaleProductSheet_(spreadsheet));
   installShopifyInventoryTrigger_();
   return {
     status: "ready",
@@ -61,30 +57,22 @@ function setupShopifyInventorySync() {
   };
 }
 
-
 function testShopifyInventoryConnection() {
   const credentials = requireShopifyCredentials_();
   const token = fetchShopifyAccessToken_(credentials);
-  const data = shopifyGraphql_(
-    credentials.shop,
-    token,
-    "query { shop { name myshopifyDomain } }",
-    {}
-  );
+  const data = shopifyGraphql_(credentials.shop, token, "query { shop { name myshopifyDomain } }", {});
   return {
     status: "success",
     shop: data.shop && (data.shop.myshopifyDomain || data.shop.name) || credentials.shop
   };
 }
 
-
 function diagnoseShopifyInventorySync() {
   const properties = PropertiesService.getScriptProperties();
-  const shop = normalizeShopDomain_(properties.getProperty(SHOPIFY_SYNC_CONFIG.SHOP_PROPERTY));
   return {
     spreadsheetId: SHOPIFY_SYNC_CONFIG.SPREADSHEET_ID,
     productSheet: SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME,
-    shop: shop || "missing",
+    shop: normalizeShopDomain_(properties.getProperty(SHOPIFY_SYNC_CONFIG.SHOP_PROPERTY)) || "missing",
     clientIdConfigured: Boolean(cleanSyncText_(properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_ID_PROPERTY))),
     clientSecretConfigured: Boolean(cleanSyncText_(properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_SECRET_PROPERTY))),
     apiVersion: SHOPIFY_SYNC_CONFIG.API_VERSION,
@@ -94,7 +82,6 @@ function diagnoseShopifyInventorySync() {
     lastResult: getLastShopifyInventorySyncResult()
   };
 }
-
 
 function installShopifyInventoryTrigger_() {
   removeShopifyInventoryTrigger();
@@ -107,7 +94,6 @@ function installShopifyInventoryTrigger_() {
     .create();
 }
 
-
 function removeShopifyInventoryTrigger() {
   let removed = 0;
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
@@ -119,12 +105,9 @@ function removeShopifyInventoryTrigger() {
   return { status: "success", removed: removed };
 }
 
-
 function syncShopifyWholesaleInventory() {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) {
-    throw new Error("Shopify inventory sync is already running.");
-  }
+  if (!lock.tryLock(30000)) throw new Error("Shopify inventory sync is already running.");
 
   const startedAt = new Date();
   let spreadsheet = null;
@@ -132,8 +115,6 @@ function syncShopifyWholesaleInventory() {
   try {
     const credentials = requireShopifyCredentials_();
     const token = fetchShopifyAccessToken_(credentials);
-
-    // Fetch the complete Shopify snapshot before any customer-visible sheet write.
     const products = fetchShopifyProductInventory_(credentials.shop, token);
     if (!products.length) throw new Error("Shopify returned no active products.");
 
@@ -159,16 +140,20 @@ function syncShopifyWholesaleInventory() {
       SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW,
       1,
       rowCount,
-      SHOPIFY_SYNC_CONFIG.COL_SYNC_STATUS
+      SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID
     ).getValues();
 
     const index = buildShopifyProductIndex_(products);
     const syncTime = new Date();
+    const titleOutput = [];
     const statusOutput = [];
     const metadataOutput = [];
     const summary = {
       rows: 0,
       matched: 0,
+      matchedById: 0,
+      matchedByImage: 0,
+      matchedByTitle: 0,
       matchedCasePack: 0,
       available: 0,
       unavailable: 0,
@@ -181,92 +166,102 @@ function syncShopifyWholesaleInventory() {
     values.forEach(function (row) {
       const title = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_TITLE - 1]);
       const packSize = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_PACK_SIZE - 1]);
-      const existingStatus = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_STATUS - 1]);
-      const brand = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_BRAND - 1]);
+      const imageUrl = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_IMAGE_URL - 1]);
       const caseFormat = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_CASE_FORMAT - 1]);
-      const persistedMatch = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH - 1]);
-      const previousSync = row[SHOPIFY_SYNC_CONFIG.COL_LAST_SYNC - 1] || "";
+      const storedProductId = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID - 1]);
 
       if (!title) {
-        statusOutput.push([existingStatus]);
-        metadataOutput.push([persistedMatch, "", "", previousSync, ""]);
+        titleOutput.push([""]);
+        statusOutput.push([""]);
+        metadataOutput.push(["", "", "", "", "", ""]);
         summary.blankRows += 1;
         return;
       }
 
       summary.rows += 1;
 
-      // The wholesale catalogue is intended to derive cases from physical
-      // single units. Rows that are themselves multipacks are deliberately not
-      // allowed to change Status automatically.
       if (!isSingleUnitPack_(packSize)) {
-        statusOutput.push([existingStatus]);
-        metadataOutput.push([persistedMatch, "", "", syncTime, "skipped non-single wholesale row"]);
+        titleOutput.push([title]);
+        statusOutput.push(["no"]);
+        metadataOutput.push(["", "", "", syncTime, "skipped non-single wholesale row", ""]);
         summary.skippedNonSingle += 1;
+        summary.unavailable += 1;
         return;
       }
 
-      const product = findShopifyProductMatch_(title, brand, persistedMatch, index);
-      if (!product) {
-        statusOutput.push([existingStatus]);
-        metadataOutput.push([persistedMatch, "", "", syncTime, "unmatched product"]);
+      const match = findShopifyProductMatch_(title, imageUrl, storedProductId, index);
+      if (!match) {
+        titleOutput.push([title]);
+        statusOutput.push(["no"]);
+        metadataOutput.push(["", "", "", syncTime, "unmatched product", ""]);
         summary.unmatchedProduct += 1;
+        summary.unavailable += 1;
         return;
       }
 
+      const product = match.product;
       const caseSize = parseWholesaleCaseSize_(caseFormat);
       const baseVariant = findBaseInventoryVariant_(product.variants, packSize);
       let availableUnits = null;
       let casesAvailable = null;
-      let matchStatus = "";
+      let inventoryMatch = match.reason;
 
       if (baseVariant) {
         availableUnits = Math.max(0, Number(baseVariant.inventoryQuantity) || 0);
         casesAvailable = Math.floor(availableUnits / caseSize);
-        matchStatus = "matched";
       } else {
-        // Some Shopify products are tracked only as true case variants (for
-        // example a 24 Pack). If an exact wholesale-case variant exists, use
-        // that quantity directly rather than inventing single-unit inventory.
         const caseVariant = findExactCasePackVariant_(product.variants, caseSize);
         if (caseVariant) {
           casesAvailable = Math.max(0, Number(caseVariant.inventoryQuantity) || 0);
           availableUnits = casesAvailable * caseSize;
-          matchStatus = "matched via case pack";
+          inventoryMatch += " via case pack";
           summary.matchedCasePack += 1;
         }
       }
 
       if (casesAvailable == null) {
-        statusOutput.push([existingStatus]);
-        metadataOutput.push([product.title, "", "", syncTime, "unmatched inventory variant"]);
+        titleOutput.push([product.title]);
+        statusOutput.push(["no"]);
+        metadataOutput.push([product.title, "", "", syncTime, "unmatched inventory variant", product.id]);
         summary.unmatchedVariant += 1;
+        summary.unavailable += 1;
         return;
       }
 
       summary.matched += 1;
+      if (match.reason === "matched product id") summary.matchedById += 1;
+      if (match.reason === "matched image") summary.matchedByImage += 1;
+      if (match.reason === "matched exact title") summary.matchedByTitle += 1;
+
       const nextStatus = casesAvailable >= 1 ? "yes" : "no";
       if (nextStatus === "yes") summary.available += 1;
       else summary.unavailable += 1;
 
+      titleOutput.push([product.title]);
       statusOutput.push([nextStatus]);
       metadataOutput.push([
         product.title,
         availableUnits,
         casesAvailable,
         syncTime,
-        matchStatus
+        inventoryMatch,
+        product.id
       ]);
     });
 
-    // Diagnostics first; customer-visible Status last. If a diagnostics write
-    // fails, the catalogue remains untouched.
     sheet.getRange(
       SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW,
       SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH,
       rowCount,
-      5
+      6
     ).setValues(metadataOutput);
+
+    sheet.getRange(
+      SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW,
+      SHOPIFY_SYNC_CONFIG.COL_TITLE,
+      rowCount,
+      1
+    ).setValues(titleOutput);
 
     sheet.getRange(
       SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW,
@@ -310,7 +305,6 @@ function syncShopifyWholesaleInventory() {
   }
 }
 
-
 function getLastShopifyInventorySyncResult() {
   const value = PropertiesService.getScriptProperties().getProperty(
     SHOPIFY_SYNC_CONFIG.LAST_RESULT_PROPERTY
@@ -323,7 +317,6 @@ function getLastShopifyInventorySyncResult() {
   }
 }
 
-
 function storeShopifySyncResult_(result) {
   PropertiesService.getScriptProperties().setProperty(
     SHOPIFY_SYNC_CONFIG.LAST_RESULT_PROPERTY,
@@ -331,22 +324,17 @@ function storeShopifySyncResult_(result) {
   );
 }
 
-
 function openWholesaleSpreadsheet_() {
   return SpreadsheetApp.openById(SHOPIFY_SYNC_CONFIG.SPREADSHEET_ID);
 }
 
-
 function getWholesaleProductSheet_(spreadsheet) {
   const sheet = spreadsheet.getSheetByName(SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME);
   if (!sheet) {
-    throw new Error(
-      'Wholesale product sheet "' + SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME + '" was not found.'
-    );
+    throw new Error('Wholesale product sheet "' + SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME + '" was not found.');
   }
   return sheet;
 }
-
 
 function fetchShopifyAccessToken_(credentials) {
   const response = UrlFetchApp.fetch(
@@ -365,9 +353,7 @@ function fetchShopifyAccessToken_(credentials) {
 
   const statusCode = response.getResponseCode();
   let payload = {};
-  try {
-    payload = JSON.parse(response.getContentText());
-  } catch (error) {}
+  try { payload = JSON.parse(response.getContentText()); } catch (error) {}
 
   if (statusCode < 200 || statusCode >= 300 || !payload.access_token) {
     throw new Error(
@@ -378,7 +364,6 @@ function fetchShopifyAccessToken_(credentials) {
   return payload.access_token;
 }
 
-
 function fetchShopifyProductInventory_(shop, token) {
   const query = [
     "query WholesaleInventory($after: String) {",
@@ -387,7 +372,13 @@ function fetchShopifyProductInventory_(shop, token) {
     "      id",
     "      title",
     "      inventoryQuantity",
-    "      product { id title vendor status }",
+    "      product {",
+    "        id",
+    "        title",
+    "        vendor",
+    "        status",
+    "        featuredMedia { preview { image { url } } }",
+    "      }",
     "    }",
     "    pageInfo { hasNextPage endCursor }",
     "  }",
@@ -415,11 +406,16 @@ function fetchShopifyProductInventory_(shop, token) {
       if (String(variant.product.status || "").toUpperCase() !== "ACTIVE") return;
 
       const productId = String(variant.product.id || "");
+      const preview = variant.product.featuredMedia &&
+        variant.product.featuredMedia.preview &&
+        variant.product.featuredMedia.preview.image;
+
       if (!productsById[productId]) {
         productsById[productId] = {
           id: productId,
           title: cleanSyncText_(variant.product.title),
           vendor: cleanSyncText_(variant.product.vendor),
+          imageUrl: preview ? cleanSyncText_(preview.url) : "",
           variants: []
         };
       }
@@ -441,7 +437,6 @@ function fetchShopifyProductInventory_(shop, token) {
   });
 }
 
-
 function shopifyGraphql_(shop, token, query, variables) {
   const response = UrlFetchApp.fetch(
     "https://" + shop + ".myshopify.com/admin/api/" +
@@ -457,9 +452,7 @@ function shopifyGraphql_(shop, token, query, variables) {
 
   const statusCode = response.getResponseCode();
   let body = {};
-  try {
-    body = JSON.parse(response.getContentText());
-  } catch (error) {}
+  try { body = JSON.parse(response.getContentText()); } catch (error) {}
 
   if (statusCode < 200 || statusCode >= 300) {
     throw new Error(
@@ -467,74 +460,63 @@ function shopifyGraphql_(shop, token, query, variables) {
       cleanShopifyError_(body, response.getContentText())
     );
   }
-
   if (body.errors && body.errors.length) {
     throw new Error(
-      "Shopify GraphQL error: " + body.errors.map(function (item) {
-        return item.message;
-      }).join("; ")
+      "Shopify GraphQL error: " +
+      body.errors.map(function (item) { return item.message; }).join("; ")
     );
   }
-
   if (!body.data) throw new Error("Shopify GraphQL returned no data.");
   return body.data;
 }
 
-
 function buildShopifyProductIndex_(products) {
+  const byId = {};
   const byNormalizedTitle = {};
+  const byImage = {};
+
   products.forEach(function (product) {
-    const key = normalizeShopifyText_(product.title);
-    if (!byNormalizedTitle[key]) byNormalizedTitle[key] = [];
-    byNormalizedTitle[key].push(product);
+    byId[product.id] = product;
+
+    const titleKey = normalizeShopifyText_(product.title);
+    if (!byNormalizedTitle[titleKey]) byNormalizedTitle[titleKey] = [];
+    byNormalizedTitle[titleKey].push(product);
+
+    const imageKey = normalizeImageUrl_(product.imageUrl);
+    if (imageKey) {
+      if (!byImage[imageKey]) byImage[imageKey] = [];
+      byImage[imageKey].push(product);
+    }
   });
-  return { products: products, byNormalizedTitle: byNormalizedTitle };
+
+  return {
+    products: products,
+    byId: byId,
+    byNormalizedTitle: byNormalizedTitle,
+    byImage: byImage
+  };
 }
 
-
-function findShopifyProductMatch_(title, brand, persistedMatch, index) {
-  const preferred = persistedMatch || title;
-  const preferredMatches = index.byNormalizedTitle[normalizeShopifyText_(preferred)] || [];
-  if (preferredMatches.length === 1) return preferredMatches[0];
-
-  if (persistedMatch) {
-    const titleMatches = index.byNormalizedTitle[normalizeShopifyText_(title)] || [];
-    if (titleMatches.length === 1) return titleMatches[0];
+function findShopifyProductMatch_(title, imageUrl, storedProductId, index) {
+  if (storedProductId && index.byId[storedProductId]) {
+    return { product: index.byId[storedProductId], reason: "matched product id" };
   }
 
-  const normalizedBrand = normalizeShopifyText_(brand);
-  const candidates = index.products.filter(function (product) {
-    const vendor = normalizeShopifyText_(product.vendor);
-    const productTitle = normalizeShopifyText_(product.title);
-    if (normalizedBrand && normalizedBrand !== "designated drinks") {
-      return vendor === normalizedBrand || productTitle.indexOf(normalizedBrand + " ") === 0;
+  const imageKey = normalizeImageUrl_(imageUrl);
+  if (imageKey) {
+    const imageMatches = index.byImage[imageKey] || [];
+    if (imageMatches.length === 1) {
+      return { product: imageMatches[0], reason: "matched image" };
     }
+  }
 
-    const firstWord = normalizeShopifyText_(title).split(" ")[0];
-    return firstWord && productTitle.indexOf(firstWord + " ") === 0;
-  });
+  const titleMatches = index.byNormalizedTitle[normalizeShopifyText_(title)] || [];
+  if (titleMatches.length === 1) {
+    return { product: titleMatches[0], reason: "matched exact title" };
+  }
 
-  if (candidates.length === 1) return candidates[0];
-  if (!candidates.length) return null;
-
-  const rowTokens = descriptorTokens_(title, brand);
-  const scored = candidates.map(function (product) {
-    return {
-      product: product,
-      score: tokenSimilarity_(
-        rowTokens,
-        descriptorTokens_(product.title, product.vendor)
-      )
-    };
-  }).sort(function (a, b) {
-    return b.score - a.score;
-  });
-
-  if (!scored.length || scored[0].score < 0.72) return null;
-  if (scored.length > 1 && scored[0].score - scored[1].score < 0.15) return null;
-  return scored[0].product;
+  return null;
 }
-
 
 function findBaseInventoryVariant_(variants, packSize) {
   const target = normalizePackText_(packSize);
@@ -554,7 +536,6 @@ function findBaseInventoryVariant_(variants, packSize) {
   return compatible.length === 1 ? compatible[0] : null;
 }
 
-
 function findExactCasePackVariant_(variants, caseSize) {
   const compatible = variants.filter(function (variant) {
     const match = cleanSyncText_(variant.title).match(/^(\d+)\s*[- ]?pack$/i);
@@ -562,7 +543,6 @@ function findExactCasePackVariant_(variants, caseSize) {
   });
   return compatible.length === 1 ? compatible[0] : null;
 }
-
 
 function parseWholesaleCaseSize_(caseFormat) {
   const match = cleanSyncText_(caseFormat).match(/^\s*(\d+)/);
@@ -572,14 +552,12 @@ function parseWholesaleCaseSize_(caseFormat) {
     : SHOPIFY_SYNC_CONFIG.DEFAULT_CASE_SIZE;
 }
 
-
 function isSingleUnitPack_(value) {
   const text = normalizePackText_(value);
   if (!text) return false;
   if (/^\d+pack$/.test(text)) return false;
   return /ml|can|bottle|single/.test(text);
 }
-
 
 function normalizePackText_(value) {
   return cleanSyncText_(value)
@@ -588,59 +566,14 @@ function normalizePackText_(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-
 function extractMl_(value) {
   const match = cleanSyncText_(value).toLowerCase().match(/(\d+)\s*ml\b/);
   return match ? Number(match[1]) : 0;
 }
 
-
-function descriptorTokens_(title, brand) {
-  let normalized = normalizeShopifyText_(title);
-  const normalizedBrand = normalizeShopifyText_(brand);
-
-  if (normalizedBrand && normalized.indexOf(normalizedBrand) === 0) {
-    normalized = normalized.slice(normalizedBrand.length).trim();
-  }
-
-  const stop = {
-    brewing: true,
-    brewery: true,
-    company: true,
-    co: true,
-    beer: true,
-    alcoholic: true,
-    non: true,
-    limited: true,
-    edition: true
-  };
-  const seen = {};
-
-  return normalized.split(" ").filter(function (token) {
-    if (!token || stop[token] || seen[token]) return false;
-    seen[token] = true;
-    return true;
-  });
-}
-
-
-function tokenSimilarity_(a, b) {
-  if (!a.length || !b.length) return 0;
-  const bSet = {};
-  b.forEach(function (token) { bSet[token] = true; });
-  let overlap = 0;
-  a.forEach(function (token) {
-    if (bSet[token]) overlap += 1;
-  });
-  return (2 * overlap) / (a.length + b.length);
-}
-
-
 function normalizeShopifyText_(value) {
   let text = cleanSyncText_(value).toLowerCase();
-  try {
-    text = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  } catch (error) {}
+  try { text = text.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch (error) {}
 
   return text
     .replace(/[’‘]/g, "'")
@@ -653,31 +586,29 @@ function normalizeShopifyText_(value) {
     .trim();
 }
 
+function normalizeImageUrl_(value) {
+  return cleanSyncText_(value)
+    .replace(/[?#].*$/, "")
+    .replace(/^https?:\/\//i, "")
+    .toLowerCase();
+}
 
 function requireShopifyCredentials_() {
   const properties = PropertiesService.getScriptProperties();
-  const shop = normalizeShopDomain_(
-    properties.getProperty(SHOPIFY_SYNC_CONFIG.SHOP_PROPERTY)
-  );
-  const clientId = cleanSyncText_(
-    properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_ID_PROPERTY)
-  );
-  const clientSecret = cleanSyncText_(
-    properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_SECRET_PROPERTY)
-  );
+  const shop = normalizeShopDomain_(properties.getProperty(SHOPIFY_SYNC_CONFIG.SHOP_PROPERTY));
+  const clientId = cleanSyncText_(properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_ID_PROPERTY));
+  const clientSecret = cleanSyncText_(properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_SECRET_PROPERTY));
 
   const missing = [];
   if (!shop) missing.push(SHOPIFY_SYNC_CONFIG.SHOP_PROPERTY);
   if (!clientId) missing.push(SHOPIFY_SYNC_CONFIG.CLIENT_ID_PROPERTY);
   if (!clientSecret) missing.push(SHOPIFY_SYNC_CONFIG.CLIENT_SECRET_PROPERTY);
-
   if (missing.length) {
     throw new Error("Missing Apps Script properties: " + missing.join(", ") + ".");
   }
 
   return { shop: shop, clientId: clientId, clientSecret: clientSecret };
 }
-
 
 function normalizeShopDomain_(value) {
   return cleanSyncText_(value)
@@ -687,7 +618,6 @@ function normalizeShopDomain_(value) {
     .replace(/\.myshopify\.com$/, "");
 }
 
-
 function ensureShopifySyncColumns_(optionalSheet) {
   const sheet = optionalSheet || getWholesaleProductSheet_(openWholesaleSpreadsheet_());
   const headers = [
@@ -695,15 +625,11 @@ function ensureShopifySyncColumns_(optionalSheet) {
     "Available Units",
     "Wholesale Cases Available",
     "Last Shopify Sync",
-    "Shopify Sync Status"
+    "Shopify Sync Status",
+    "Shopify Product ID"
   ];
 
-  sheet.getRange(
-    1,
-    SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH,
-    1,
-    headers.length
-  ).setValues([headers]);
+  sheet.getRange(1, SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH, 1, headers.length).setValues([headers]);
 
   const dataRows = Math.max(1, sheet.getMaxRows() - 1);
   sheet.getRange(
@@ -720,7 +646,6 @@ function ensureShopifySyncColumns_(optionalSheet) {
   }
 }
 
-
 function logShopifySync_(spreadsheet, result, errorMessage) {
   const logs = spreadsheet.getSheetByName(SHOPIFY_SYNC_CONFIG.LOGS_SHEET_NAME);
   if (!logs) return;
@@ -729,16 +654,16 @@ function logShopifySync_(spreadsheet, result, errorMessage) {
   const resultText = result && result.status === "success"
     ? [
         "matched=" + (summary.matched || 0),
+        "id=" + (summary.matchedById || 0),
+        "image=" + (summary.matchedByImage || 0),
+        "title=" + (summary.matchedByTitle || 0),
         "available=" + (summary.available || 0),
         "unavailable=" + (summary.unavailable || 0),
         "unmatchedProduct=" + (summary.unmatchedProduct || 0),
-        "unmatchedVariant=" + (summary.unmatchedVariant || 0),
-        "skippedNonSingle=" + (summary.skippedNonSingle || 0)
+        "unmatchedVariant=" + (summary.unmatchedVariant || 0)
       ].join(", ")
     : "failed";
 
-  // Match the existing Logs sheet's six-column layout without depending on the
-  // wholesale backend's logEvent_ helper.
   logs.appendRow([
     new Date(),
     "",
@@ -748,7 +673,6 @@ function logShopifySync_(spreadsheet, result, errorMessage) {
     safeSyncSheetCell_(errorMessage || "")
   ]);
 }
-
 
 function notifyShopifySyncFailure_(message) {
   try {
@@ -760,7 +684,6 @@ function notifyShopifySyncFailure_(message) {
         "",
         "Error: " + message,
         "",
-        "Customer-visible product Status was not intentionally changed after this failure.",
         "Open the Google Apps Script Executions screen for details."
       ].join("\n"),
       name: "Designated Drinks Wholesale"
@@ -770,12 +693,10 @@ function notifyShopifySyncFailure_(message) {
   }
 }
 
-
 function safeSyncSheetCell_(value) {
   const text = cleanSyncText_(value);
   return /^[=+\-@]/.test(text) ? "'" + text : text;
 }
-
 
 function cleanShopifyError_(payload, rawText) {
   if (payload && payload.error_description) {
@@ -786,7 +707,6 @@ function cleanShopifyError_(payload, rawText) {
   }
   return cleanSyncText_(rawText).slice(0, 240) || "No error details were returned.";
 }
-
 
 function cleanSyncText_(value) {
   return String(value == null ? "" : value).replace(/\u0000/g, "").trim();
