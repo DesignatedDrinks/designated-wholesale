@@ -10,14 +10,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="catalogue-ux.css?v=20260902-2">
-  <script src="checkout-transport.js?v=20260902-2"></script>
-  <script src="app.js" defer></script>
-  <script src="checkout-flow.js?v=20260902-4" defer></script>
-  <script src="catalogue-ux.js" defer></script>
+  <link rel="stylesheet" href="catalogue-ux.css?v=20260902-5">
+  <script src="app.js?v=20260902-5" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#catalogue">Skip to products</a>
+  <div id="live-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <header class="site-header">
     <div class="header-inner">
@@ -41,13 +39,13 @@
       <div>
         <p class="eyebrow">Wholesale catalogue</p>
         <h1 id="page-title">Build your order</h1>
-        <p class="intro-copy">Choose case quantities below. We’ll confirm availability and delivery details before invoicing.</p>
+        <p class="intro-copy">Choose the cases you need. The catalogue only shows products currently available for wholesale ordering.</p>
       </div>
       <div class="service-note" aria-label="Ordering information">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7h-3V4H3a2 2 0 0 0-2 2v11h2a3 3 0 0 0 6 0h6a3 3 0 0 0 6 0h2v-5l-3-5Zm-14 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm9-4H9.82A3 3 0 0 0 3 15V6h12v9Zm3 4a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm3-4h-.18A3 3 0 0 0 17 15V9h1.76L21 12.73V15Z"/></svg>
         <div>
           <strong>Delivery or pickup</strong>
-          <span>Freight is confirmed after review.</span>
+          <span>Freight is confirmed before invoicing.</span>
         </div>
       </div>
     </section>
@@ -55,26 +53,50 @@
     <section class="catalogue-toolbar" aria-label="Catalogue controls">
       <label class="search-field" for="search-input">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 19.6-4.8-4.8a8 8 0 1 0-1.4 1.4l4.8 4.8 1.4-1.4ZM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z"/></svg>
-        <span class="sr-only">Search products, brands or styles</span>
-        <input id="search-input" type="search" autocomplete="off" placeholder="Search products, brands or styles…">
+        <span class="sr-only">Search brewery or product</span>
+        <input id="search-input" type="search" autocomplete="off" placeholder="Search brewery or product…">
       </label>
       <div id="category-filters" class="filter-chips" role="group" aria-label="Filter by category"></div>
+
+      <div class="catalogue-refine">
+        <label class="catalogue-select-field">
+          <span>Brewery</span>
+          <select id="brewery-filter" aria-label="Filter by brewery">
+            <option value="All">All breweries</option>
+          </select>
+        </label>
+        <label class="catalogue-select-field">
+          <span>Sort by</span>
+          <select id="sort-products" aria-label="Sort products">
+            <option value="brewery-az">Brewery A–Z</option>
+            <option value="product-az">Product A–Z</option>
+            <option value="price-low">Price: low to high</option>
+            <option value="price-high">Price: high to low</option>
+          </select>
+        </label>
+        <button id="catalogue-clear-all" class="catalogue-clear-button" type="button">Reset filters</button>
+      </div>
     </section>
 
+    <div class="catalogue-results-meta" aria-live="polite">
+      <strong id="catalogue-results-count">Loading products…</strong>
+      <span id="catalogue-results-detail">Brewery A–Z</span>
+    </div>
+
     <div class="shop-layout">
-      <section id="catalogue" class="catalogue" aria-live="polite" aria-busy="true">
+      <section id="catalogue" class="catalogue" aria-live="polite" aria-busy="true" tabindex="-1">
         <div id="catalogue-status" class="catalogue-status">
           <div class="skeleton-grid" aria-hidden="true">
-            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
-            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+            <div class="skeleton-card"></div><div class="skeleton-card"></div>
+            <div class="skeleton-card"></div><div class="skeleton-card"></div>
           </div>
           <p>Loading the wholesale catalogue…</p>
         </div>
         <div id="product-grid" class="product-grid" hidden></div>
         <div id="empty-state" class="empty-state" hidden>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9.5 3a6.5 6.5 0 1 0 3.9 11.7l4 4 1.3-1.4-4-4A6.5 6.5 0 0 0 9.5 3Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
-          <h2>No products found</h2>
-          <p>Try another search or category.</p>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9.5 3a6.5 6.5 0 1 0 3.9 11.7l4 4 1.3-1.4-4-4A6.5 6.5 0 1 0 9.5 3Z"/></svg>
+          <h2 id="empty-state-title">No products match</h2>
+          <p id="empty-state-copy">Clear a filter or try a different search.</p>
           <button class="text-button" id="clear-filters" type="button">Clear filters</button>
         </div>
       </section>
@@ -86,25 +108,25 @@
               <p class="eyebrow">Current selection</p>
               <h2 id="summary-title">Your order</h2>
             </div>
-            <span id="summary-count-badge" class="count-badge">0</span>
+            <span id="summary-count-badge" class="count-badge" aria-label="Cases selected">0</span>
           </div>
           <div id="summary-empty" class="summary-empty">
             <div class="empty-crate" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="m3 6 9-4 9 4v12l-9 4-9-4V6Zm9-1.8L6.7 6.6 12 9l5.3-2.4L12 4.2ZM5 8.1v8.6l6 2.7v-8.6L5 8.1Zm8 11.3 6-2.7V8.1l-6 2.7v8.6Z"/></svg>
             </div>
             <strong>No cases selected</strong>
-            <span>Add quantities from the catalogue to begin.</span>
+            <span>Use the + buttons to build your order.</span>
           </div>
           <div id="summary-content" hidden>
             <div id="summary-items" class="summary-items"></div>
             <div class="summary-totals">
               <div><span>Total cases</span><strong id="summary-cases">0</strong></div>
               <div class="subtotal"><span>Subtotal</span><strong id="summary-subtotal">$0.00</strong></div>
-              <p>GST/HST and delivery are shown during review.</p>
+              <p>GST/HST and delivery are calculated during review.</p>
             </div>
           </div>
           <button id="review-order" class="primary-button" type="button" disabled>
-            Review order
+            <span id="review-order-label">Review order</span>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg>
           </button>
         </div>
@@ -114,7 +136,7 @@
 
   <button id="mobile-order-bar" class="mobile-order-bar" type="button" hidden>
     <span><strong id="mobile-cases">0 cases</strong><span id="mobile-subtotal">$0.00</span></span>
-    <span>View order <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg></span>
+    <span>Review order <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg></span>
   </button>
 
   <dialog id="checkout-dialog" class="checkout-dialog" aria-labelledby="checkout-title">
@@ -138,37 +160,131 @@
           <div id="review-items" class="review-items"></div>
           <dl class="review-totals">
             <div><dt>Subtotal</dt><dd id="review-subtotal">$0.00</dd></div>
-            <div><dt>Tax</dt><dd id="review-tax">—</dd></div>
+            <div><dt><span id="review-tax-label">Tax</span><small id="tax-destination">Select delivery province</small></dt><dd id="review-tax">—</dd></div>
             <div class="total-row"><dt>Estimated total</dt><dd id="review-total">$0.00</dd></div>
           </dl>
           <p class="estimate-note">GST/HST is based on the delivery province. Final freight is confirmed before invoicing.</p>
         </section>
 
         <form id="checkout-form" class="checkout-form" novalidate>
-          <div class="section-heading">
-            <h3>Contact and fulfilment</h3>
-            <span>Required fields</span>
+          <div class="checkout-fast-intro">
+            <div>
+              <h3>Checkout details</h3>
+              <p>Just the information needed to confirm your order.</p>
+            </div>
+            <span class="checkout-required-note">Required unless marked optional</span>
           </div>
-          <div class="form-grid">
-            <label class="field full-width"><span>Company name</span><input id="company-name" name="companyName" type="text" autocomplete="organization" maxlength="160" required><small class="field-error"></small></label>
-            <label class="field"><span>Contact name</span><input id="contact-name" name="fullName" type="text" autocomplete="name" maxlength="120" required><small class="field-error"></small></label>
-            <label class="field"><span>Email</span><input id="email" name="email" type="email" autocomplete="email" maxlength="200" required><small class="field-error"></small></label>
-            <label class="field full-width"><span>Phone</span><input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40" required><small class="field-error"></small></label>
+
+          <div class="checkout-contact-grid">
+            <label class="field company-field">
+              <span>Company</span>
+              <input id="company-name" name="companyName" type="text" autocomplete="organization" maxlength="160" required>
+              <small class="field-error"></small>
+            </label>
+            <label class="field">
+              <span>Contact</span>
+              <input id="contact-name" name="fullName" type="text" autocomplete="name" maxlength="120" required>
+              <small class="field-error"></small>
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
+              <small class="field-error"></small>
+            </label>
+            <label class="field phone-field">
+              <span>Phone</span>
+              <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required>
+              <small class="field-error"></small>
+            </label>
           </div>
+
           <fieldset class="fulfilment-choice">
-            <legend>How would you like to receive the order?</legend>
-            <label><input type="radio" name="fulfilment" value="Delivery" checked><span><strong>Delivery</strong><small>We’ll confirm timing and freight.</small></span></label>
-            <label><input type="radio" name="fulfilment" value="Pickup"><span><strong>Pickup</strong><small>We’ll confirm when it is ready.</small></span></label>
+            <legend>Receive order</legend>
+            <label>
+              <input type="radio" name="fulfilment" value="Delivery" checked>
+              <span><strong>Delivery</strong><small>Ship to your business.</small></span>
+            </label>
+            <label>
+              <input type="radio" name="fulfilment" value="Pickup">
+              <span><strong>Pickup</strong><small>Pick up in Ontario.</small></span>
+            </label>
           </fieldset>
-          <label id="address-field" class="field"><span>Delivery address</span><textarea id="delivery-address" name="deliveryAddress" rows="2" maxlength="300" autocomplete="street-address" required></textarea><small class="field-error"></small></label>
-          <div class="form-grid optional-fields">
-            <label class="field"><span>PO number <em>Optional</em></span><input name="poNumber" type="text" maxlength="80"></label>
-            <label class="field"><span>Order notes <em>Optional</em></span><input name="notes" type="text" maxlength="500"></label>
-          </div>
+
+          <section id="address-field" class="delivery-card">
+            <div class="delivery-card-header">
+              <strong>Delivery address</strong>
+              <span>Province automatically sets the GST/HST estimate.</span>
+            </div>
+            <div class="address-grid">
+              <label class="field street-field">
+                <span>Street address</span>
+                <input name="addressLine1" type="text" autocomplete="address-line1" maxlength="160" required>
+                <small class="field-error"></small>
+              </label>
+              <label class="field unit-field">
+                <span>Unit <em>Optional</em></span>
+                <input name="addressLine2" type="text" autocomplete="address-line2" maxlength="80">
+                <small class="field-error"></small>
+              </label>
+              <label class="field">
+                <span>City</span>
+                <input name="city" type="text" autocomplete="address-level2" maxlength="100" required>
+                <small class="field-error"></small>
+              </label>
+              <label class="field">
+                <span>Province</span>
+                <select name="province" autocomplete="address-level1" required>
+                  <option value="">Select province</option>
+                  <option value="AB">Alberta</option>
+                  <option value="BC">British Columbia</option>
+                  <option value="MB">Manitoba</option>
+                  <option value="NB">New Brunswick</option>
+                  <option value="NL">Newfoundland and Labrador</option>
+                  <option value="NS">Nova Scotia</option>
+                  <option value="NT">Northwest Territories</option>
+                  <option value="NU">Nunavut</option>
+                  <option value="ON">Ontario</option>
+                  <option value="PE">Prince Edward Island</option>
+                  <option value="QC">Quebec</option>
+                  <option value="SK">Saskatchewan</option>
+                  <option value="YT">Yukon</option>
+                </select>
+                <small class="field-error"></small>
+              </label>
+              <label class="field">
+                <span>Postal code</span>
+                <input name="postalCode" type="text" inputmode="text" autocomplete="postal-code" maxlength="7" placeholder="A1A 1A1" required>
+                <small class="field-error"></small>
+              </label>
+            </div>
+            <div class="tax-preview">
+              <span id="checkout-tax-context">Select a province to calculate GST/HST</span>
+              <strong id="checkout-tax-rate">—</strong>
+            </div>
+            <textarea id="delivery-address" name="deliveryAddress" maxlength="500" hidden></textarea>
+          </section>
+
+          <details class="optional-order-details">
+            <summary>PO number or order notes <span>Optional</span></summary>
+            <div class="optional-order-fields">
+              <label class="field">
+                <span>PO number</span>
+                <input name="poNumber" type="text" maxlength="80">
+              </label>
+              <label class="field">
+                <span>Order notes</span>
+                <input name="notes" type="text" maxlength="500">
+              </label>
+            </div>
+          </details>
+
           <label class="honeypot" aria-hidden="true">Website<input name="website" type="text" tabindex="-1" autocomplete="off"></label>
           <div id="form-alert" class="form-alert" role="alert" hidden></div>
-          <button id="place-order" class="primary-button place-order" type="submit"><span>Place wholesale order</span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg></button>
-          <p class="form-footnote">This submits an order request, not a final invoice.</p>
+          <button id="place-order" class="primary-button place-order" type="submit">
+            <span id="place-order-label">Place wholesale order</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg>
+          </button>
+          <p class="form-footnote">Your order is recorded first. Freight is confirmed before invoicing.</p>
         </form>
       </div>
     </div>
@@ -176,15 +292,20 @@
 
   <dialog id="success-dialog" class="success-dialog" aria-labelledby="success-title">
     <div class="success-card">
-      <div class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9.2 16.6-4.6-4.5L6 10.7l3.2 3.2L18 5.2l1.4 1.4-10.2 10Z"/></svg></div>
+      <div class="success-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="m9.2 16.6-4.6-4.5L6 10.7l3.2 3.2L18 5.2l1.4 1.4-10.2 10Z"/></svg>
+      </div>
       <p class="eyebrow">Order received</p>
       <h2 id="success-title">You’re all set.</h2>
       <p class="success-reference">Order <strong id="success-order-id"></strong></p>
-      <p>We’ve safely recorded your wholesale order.</p>
-      <div class="success-summary"><strong id="success-cases">0 cases</strong><span id="success-total">$0.00 estimated total</span></div>
-      <p class="success-email">Confirmation sent to <strong id="success-email"></strong></p>
+      <p>Your wholesale order has been recorded.</p>
+      <div class="success-summary">
+        <strong id="success-cases">0 cases</strong>
+        <span id="success-total">$0.00 estimated total</span>
+      </div>
+      <p id="success-email-message" class="success-email">Confirmation email is being sent to <strong id="success-email"></strong></p>
       <p class="success-next">We’ll contact you if there are any availability or delivery issues.</p>
-      <button id="place-another-order" class="secondary-button" type="button">Place another order</button>
+      <button id="place-another-order" class="secondary-button" type="button">Back to catalogue</button>
     </div>
   </dialog>
 
