@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
 
       - name: Upgrade email templates
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
           p = Path('apps-script/Code.gs')
