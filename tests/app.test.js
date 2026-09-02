@@ -142,3 +142,9 @@ test("dialog body lock is released whenever all dialogs are closed", () => {
   assert.equal(app.shouldBodyBeLocked(false, true), true);
   assert.equal(app.shouldBodyBeLocked(false, false), false);
 });
+
+test("status callback network errors are distinguishable from server errors", () => {
+  assert.equal(app.isStatusTransportError(new Error("The request could not be completed.")), true);
+  assert.equal(app.isStatusTransportError(new Error("The request timed out.")), true);
+  assert.equal(app.isStatusTransportError(new Error("A selected product is unavailable.")), false);
+});
