@@ -4,13 +4,42 @@
   if (
     typeof window === "undefined" ||
     typeof document === "undefined" ||
-    typeof HTMLFormElement === "undefined"
+    typeof HTMLFormElement === "undefined" ||
+    typeof Node === "undefined"
   ) {
     return;
   }
 
+  const LEGACY_ENDPOINT =
+    "https://script.google.com/macros/s/AKfycbwhZRZht3Sw35KJqXpwwXR-uFvC15kyyNK0TUsE-y-FARXhlPSdl1UehiEdsHKvGHP57Q/exec";
+  const PRODUCTION_ENDPOINT =
+    "https://script.google.com/macros/s/AKfycbw-mYe47cHU4hNMIJ3wzLW2tMRDsRYlTQfWDkWSQ8dndqqVw6Phmdz--hGqWPTPSBs0uQ/exec";
+
   const nativeSubmit = HTMLFormElement.prototype.submit;
-  const APPS_SCRIPT_PREFIX = "https://script.google.com/macros/s/";
+  const nativeAppendChild = Node.prototype.appendChild;
+
+  function rewriteEndpoint(url) {
+    const value = String(url || "");
+    if (value.indexOf(LEGACY_ENDPOINT) === 0) {
+      return PRODUCTION_ENDPOINT + value.slice(LEGACY_ENDPOINT.length);
+    }
+    return value;
+  }
+
+  // app.js uses JSONP for both catalogue reads and order-status polling.
+  // Redirect those script requests to the current production Apps Script
+  // deployment before the browser sends them.
+  Node.prototype.appendChild = function (child) {
+    if (
+      child &&
+      String(child.tagName || "").toUpperCase() === "SCRIPT" &&
+      child.src
+    ) {
+      const rewritten = rewriteEndpoint(child.src);
+      if (rewritten !== child.src) child.src = rewritten;
+    }
+    return nativeAppendChild.call(this, child);
+  };
 
   function isWholesaleOrderForm(form) {
     const method = String(form.method || "").toLowerCase();
@@ -20,7 +49,7 @@
     return (
       method === "post" &&
       target === "order-submit-frame" &&
-      action.indexOf(APPS_SCRIPT_PREFIX) === 0
+      (action.indexOf(LEGACY_ENDPOINT) === 0 || action.indexOf(PRODUCTION_ENDPOINT) === 0)
     );
   }
 
@@ -38,7 +67,7 @@
   function submitNativeFallback(action, entries) {
     const fallback = document.createElement("form");
     fallback.method = "POST";
-    fallback.action = action;
+    fallback.action = rewriteEndpoint(action);
     fallback.target = "order-submit-frame";
     fallback.hidden = true;
 
@@ -66,7 +95,7 @@
       return nativeSubmit.call(this);
     }
 
-    const action = this.action;
+    const action = rewriteEndpoint(this.action);
     const entries = serializeForm(this);
     const body = new URLSearchParams(entries);
 
