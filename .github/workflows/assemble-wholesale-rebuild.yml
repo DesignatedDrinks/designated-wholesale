@@ -1,0 +1,100 @@
+name: Assemble wholesale rebuild
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .build-info
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wholesale-rebuild
+  cancel-in-progress: false
+
+jobs:
+  assemble-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch staged payload
+        run: git fetch origin wholesale-rebuild-payload:refs/remotes/origin/wholesale-rebuild-payload
+
+      - name: Assemble reviewed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > app.js
+          for p in 001 002 003 004 005; do git show "origin/wholesale-rebuild-payload:payload/app.js.${p}.part" >> app.js; done
+
+          : > index.html
+          for p in 001 002; do git show "origin/wholesale-rebuild-payload:payload/index.html.${p}.part" >> index.html; done
+
+          : > catalogue-ux.css
+          for p in 001 002; do git show "origin/wholesale-rebuild-payload:payload/catalogue-ux.css.${p}.part" >> catalogue-ux.css; done
+
+          mkdir -p tests apps-script
+          git show "origin/wholesale-rebuild-payload:payload/tests_app.test.js.001.part" > tests/app.test.js
+
+          : > apps-script/Code.gs
+          for p in 001 002 003 004; do git show "origin/wholesale-rebuild-payload:payload/apps-script_Code.gs.${p}.part" >> apps-script/Code.gs; done
+
+          rm -f checkout-flow.js checkout-transport.js catalogue-ux.js
+
+      - name: Verify exact payload hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "7a0ade4c48a5039defa32980d4238fd000eff9141dfe082dfe6e4cb57d80ccd4  app.js" | sha256sum -c -
+          echo "cbd2f1b62ae60d78101788b87a59f8f07b45b1f276f2d611ec7f987010443158  index.html" | sha256sum -c -
+          echo "ecfa2b134881d53efe7852f6707d5dec5350d0511273356dbe24e1d4f8000da3  catalogue-ux.css" | sha256sum -c -
+          echo "1f345ecfd2afab1e6431773d27c2daefef2afd7017c2f5a5ed327c4ad9a71a69  tests/app.test.js" | sha256sum -c -
+          echo "7c8b12e871b4b6c042bea245c83704f33c19feb30de6d4ff97a943381c2c9aee  apps-script/Code.gs" | sha256sum -c -
+
+      - name: Static checks and regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app.js
+          cp apps-script/Code.gs /tmp/wholesale-code.js
+          node --check /tmp/wholesale-code.js
+          node --test tests/app.test.js
+          python - <<'PY'
+          from html.parser import HTMLParser
+          HTMLParser().feed(open('index.html', encoding='utf-8').read())
+          PY
+          ! grep -Eq 'checkout-flow\.js|checkout-transport\.js|catalogue-ux\.js' index.html
+
+      - name: Update package version and clean staging artifacts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          p='package.json'
+          data=json.load(open(p, encoding='utf-8'))
+          data['version']='8.0.0'
+          open(p,'w',encoding='utf-8').write(json.dumps(data, indent=2)+'\n')
+          PY
+          rm -f .build-info payload/branch-placeholder.txt
+          rm -f .github/workflows/assemble-wholesale-rebuild.yml
+          rmdir payload 2>/dev/null || true
+
+      - name: Commit reviewed rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "DesignatedDrinks"
+          git config user.email "designateddrinksonline@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Rebuild wholesale UI for speed and reliability"
+          git push origin HEAD:main
+
+      - name: Remove temporary payload branch
+        if: success()
+        run: git push origin --delete wholesale-rebuild-payload || true
