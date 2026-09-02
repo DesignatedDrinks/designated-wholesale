@@ -12,7 +12,7 @@
   const CONFIG = Object.freeze({
     sheetId: "17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8",
     sheetGid: "0",
-    endpoint: "https://script.google.com/macros/s/AKfycbw-mYe47cHU4hNMIJ3wzLW2tMRDsRYlTQfWDkWSQ8dndqqVw6Phmdz--hGqWPTPSBs0uQ/exec",
+    endpoint: "https://script.google.com/macros/s/AKfycbwkRvqX5Sv0wO941mfCdizoDTyh43c82-8fN5mwkRFyzMJjMR6jmiMxIdt5H0Lv6N52ag/exec",
     maxQuantity: 999,
     cartKey: "ddw-wholesale-cart-v3",
     draftKey: "ddw-wholesale-checkout-draft-v3",
