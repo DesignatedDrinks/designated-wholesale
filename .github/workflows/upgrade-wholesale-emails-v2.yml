@@ -1,0 +1,42 @@
+name: Upgrade wholesale emails v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .email-template-upgrade-v2
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply email upgrade
+        run: python tools/upgrade_wholesale_emails.py
+      - name: Verify backend
+        shell: bash
+        run: |
+          cp apps-script/Code.gs /tmp/Code.js
+          node --check /tmp/Code.js
+          grep -q 'VERSION: "8.1"' apps-script/Code.gs
+          grep -q 'htmlBody:' apps-script/Code.gs
+          grep -q 'imageUrl: product.imageUrl' apps-script/Code.gs
+          grep -q 'function testEmailTemplates()' apps-script/Code.gs
+          grep -q 'function sendWholesaleEmailPreview()' apps-script/Code.gs
+          grep -q 'BRAND_LOGO_URL' apps-script/Code.gs
+          git diff --check
+      - name: Commit backend upgrade
+        shell: bash
+        run: |
+          rm -f .email-template-upgrade-v2 tools/upgrade_wholesale_emails.py
+          git config user.name "DesignatedDrinks"
+          git config user.email "designateddrinksonline@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Upgrade wholesale order emails with product imagery"
+          git push origin HEAD:main
