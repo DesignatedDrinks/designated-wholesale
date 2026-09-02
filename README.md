@@ -4,7 +4,7 @@ The canonical Designated Drinks wholesale ordering experience:
 
 - Production: https://designateddrinks.github.io/designated-wholesale/
 - Product and order source of truth: the existing **Designated Wholesale** Google Sheet
-- Backend source: `apps-script/Code.gs`
+- Checkout/backend source: `apps-script/Code.gs`
 - Independent Shopify inventory sync: `apps-script/ShopifyInventorySync.gs`
 
 ## Architecture
@@ -12,7 +12,7 @@ The canonical Designated Drinks wholesale ordering experience:
 ```
 GitHub Pages catalogue + cart + checkout
                 ↓
-Google Apps Script web app
+Google Apps Script checkout web app
                 ↓
 Designated Wholesale Google Sheet
   ├─ Sheet1 (products)
@@ -21,37 +21,41 @@ Designated Wholesale Google Sheet
   ├─ Settings
   └─ Logs
                 ↑
-Daily Shopify inventory sync
+Standalone daily Shopify inventory sync
+                ↑
+Shopify Admin API
 ```
 
-The frontend loads active products from the Apps Script JSONP endpoint and falls back to the existing Sheet CSV export while an older backend deployment is still active. Checkout submits SKU, catalogue title, quantity, customer details, and a unique submission ID.
+The Shopify inventory sync is deliberately independent of the checkout Apps Script. It can run in its own Apps Script project and does not require the checkout backend's `CONFIG` object or helper functions.
 
-## Apps Script deployment
+## Checkout Apps Script
 
-1. Keep `apps-script/Code.gs` in the existing wholesale Apps Script project.
-2. Add `apps-script/ShopifyInventorySync.gs` to that same Apps Script project as a second script file.
-3. Run `setupSystem()` once if the wholesale backend has not already been initialized.
-4. Deploy a new version of the existing Web app when backend web-app code changes, executing as the owner with access set to anyone.
-5. Verify `?action=products` returns the active catalogue and `?action=status&submissionId=...` returns JSON.
+Keep `apps-script/Code.gs` in the Apps Script project used by the production wholesale web-app endpoint. Deploy a new version of that existing Web app only when checkout/backend web-app code changes.
 
 Do not create another wholesale spreadsheet or another wholesale web-app endpoint.
 
 ## Independent Shopify inventory sync
 
-The daily inventory refresh runs entirely inside Google Apps Script. ChatGPT is not part of the production path.
-
 ### Shopify app
 
-Create an app in Shopify's Dev Dashboard for the Designated Drinks store and release/install a version with only these Admin API scopes:
+Create an app in Shopify's Dev Dashboard for the Designated Drinks store, release a version, and install it on the store with only these Admin API scopes:
 
 - `read_products`
 - `read_inventory`
 
-The app is a server-side integration for the Designated Drinks store. It uses Shopify's client-credentials grant and requests a fresh short-lived Admin API access token each time it runs.
+The sync uses Shopify's client-credentials grant. It exchanges the Client ID and Client secret for a fresh short-lived Admin API access token whenever it runs.
 
-### Apps Script secrets
+### Apps Script project
 
-In the existing wholesale Apps Script project, open **Project Settings → Script Properties** and add:
+Create or use a separate Google Apps Script project for the inventory sync. Its entire `Code.gs` can be the contents of:
+
+`apps-script/ShopifyInventorySync.gs`
+
+The sync file is self-contained. Do not paste the checkout backend `CONFIG` object into it and do not combine the two files just to satisfy dependencies.
+
+### Script Properties
+
+In the inventory-sync Apps Script project, open **Project Settings → Script Properties** and add:
 
 - `SHOPIFY_SHOP` = `designateddrinks`
 - `SHOPIFY_CLIENT_ID` = the Shopify Dev Dashboard Client ID
@@ -61,25 +65,31 @@ Never put the Client secret into GitHub or browser JavaScript.
 
 ### Turn on the daily sync
 
-1. Add the three Script Properties above.
-2. Run `testShopifyInventoryConnection()` once. It should return `status: success`.
-3. Run `setupShopifyInventorySync()` once. This creates the daily trigger for about 6:00 AM America/Toronto.
-4. Run `syncShopifyWholesaleInventory()` manually once to populate the inventory diagnostics immediately.
-5. Check `getLastShopifyInventorySyncResult()` for the last run summary.
+Run these functions in order:
 
-The sync treats the rows already present in `Sheet1` as the wholesale whitelist. It does not add/delete wholesale rows or change pricing, formulas, images, category, SKU, case format, or sort order.
+1. `testShopifyInventoryConnection()` — should return `status: success`.
+2. `setupShopifyInventorySync()` — verifies the connection, prepares hidden sync columns N:R, and creates the daily trigger for about 6:00 AM America/Toronto.
+3. `syncShopifyWholesaleInventory()` — runs the first inventory refresh immediately.
+4. `getLastShopifyInventorySyncResult()` — returns the latest run summary.
+5. `diagnoseShopifyInventorySync()` — safe diagnostic output showing configuration/trigger state without revealing the Client secret.
 
-For each row it:
+The sync treats rows already present in `Sheet1` as the wholesale whitelist. It does not add or delete wholesale rows and does not change pricing, formulas, images, categories, SKUs, case formats, or sort order.
+
+For each eligible single-unit wholesale row it:
 
 - matches the wholesale product to Shopify conservatively;
-- uses the base can/bottle/single variant inventory where possible;
+- uses the matching base can/bottle/single variant inventory when available;
 - calculates `Wholesale Cases Available = floor(available units / case size)`;
+- can use a true Shopify case variant directly when the exact wholesale case size exists;
 - sets `Status` to `yes` only when at least one full wholesale case is available;
-- leaves `Status` unchanged when a product or inventory variant cannot be matched safely;
+- sets `Status` to `no` when the matched inventory cannot make one complete case;
+- leaves `Status` unchanged when the product or inventory variant cannot be matched safely;
+- leaves wholesale rows that are themselves multipacks unchanged;
 - records diagnostics in hidden columns N:R;
-- clears the wholesale product cache after a successful sync;
-- records the run in `Logs`;
-- emails `sales@designateddrinks.ca` if the sync itself fails.
+- records each run in the existing `Logs` tab when present;
+- emails `sales@designateddrinks.ca` if the sync fails.
+
+The sync fetches the complete Shopify inventory snapshot before changing customer-visible status. If Shopify authentication or inventory retrieval fails, it does not intentionally change the wholesale `Status` column.
 
 ## Local verification
 
