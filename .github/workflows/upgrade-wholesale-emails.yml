@@ -1,0 +1,436 @@
+name: Upgrade wholesale emails
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .email-template-upgrade
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Upgrade email templates
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('apps-script/Code.gs')
+          s = p.read_text(encoding='utf-8')
+
+          old = '  PRODUCT_CACHE_SECONDS: 30,\n  VERSION: "8.0"\n'
+          new = '  PRODUCT_CACHE_SECONDS: 30,\n  BRAND_LOGO_URL: "https://designateddrinks.github.io/designated-wholesale/dd-logo.png",\n  BRAND_WEBSITE: "https://designateddrinks.ca",\n  VERSION: "8.1"\n'
+          if s.count(old) != 1:
+              raise SystemExit('CONFIG anchor not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old_item = '''      brand: product.brand,\n      name: product.name,\n      caseFormat: product.caseFormat,\n      cases: item.cases,\n      unitPrice: product.casePrice,\n      lineTotal: roundMoney_(item.cases * product.casePrice)\n'''
+          new_item = '''      brand: product.brand,\n      name: product.name,\n      caseFormat: product.caseFormat,\n      imageUrl: product.imageUrl,\n      cases: item.cases,\n      unitPrice: product.casePrice,\n      lineTotal: roundMoney_(item.cases * product.casePrice)\n'''
+          if s.count(old_item) != 1:
+              raise SystemExit('priced-item anchor not found exactly once')
+          s = s.replace(old_item, new_item, 1)
+
+          start = s.index('function sendNotifications_(now, orderId, customer, items, totals, settings) {')
+          end = s.index('\nfunction logEvent_(', start)
+          replacement = r'''function sendNotifications_(now, orderId, customer, items, totals, settings) {
+  const warnings = [];
+  let internalSent = false;
+  const internalSubject = "New wholesale order · " + safeSubject_(customer.company) + " · " + orderId;
+  const internalText = buildSalesEmailText_(now, orderId, customer, items, totals);
+  const internalHtml = buildSalesEmailHtml_(now, orderId, customer, items, totals);
+
+  try {
+    MailApp.sendEmail({
+      to: settings.internal_notification_email,
+      replyTo: customer.email,
+      subject: internalSubject,
+      body: internalText,
+      htmlBody: internalHtml,
+      name: "Designated Drinks Wholesale"
+    });
+    internalSent = true;
+  } catch (error) {
+    console.error("Primary internal email failed:", error);
+    warnings.push("internal-primary-email");
+  }
+
+  if (settings.backup_notification_email && settings.backup_notification_email !== settings.internal_notification_email) {
+    try {
+      MailApp.sendEmail({
+        to: settings.backup_notification_email,
+        replyTo: customer.email,
+        subject: "Backup · " + internalSubject,
+        body: internalText,
+        htmlBody: internalHtml,
+        name: "Designated Drinks Wholesale"
+      });
+      internalSent = true;
+    } catch (error) {
+      console.error("Backup internal email failed:", error);
+      warnings.push("internal-backup-email");
+    }
+  }
+  if (!internalSent) warnings.push("internal-email");
+
+  try {
+    MailApp.sendEmail({
+      to: customer.email,
+      replyTo: settings.support_email,
+      subject: "Wholesale order received · " + orderId,
+      body: buildCustomerEmailText_(orderId, customer, items, totals, settings),
+      htmlBody: buildCustomerEmailHtml_(orderId, customer, items, totals, settings),
+      name: "Designated Drinks"
+    });
+  } catch (error) {
+    console.error("Customer confirmation failed:", error);
+    warnings.push("customer-email");
+  }
+
+  return {
+    status: warnings.length ? (internalSent ? "PARTIAL" : "FAILED") : "SENT",
+    warnings: warnings
+  };
+}
+
+function buildSalesEmailText_(now, orderId, customer, items, totals) {
+  const details = [
+    "New wholesale order: " + orderId,
+    customer.company + " · " + customer.contact + " · " + customer.email + " · " + customer.phone,
+    customer.fulfilment + (customer.deliveryAddress ? " · " + customer.deliveryAddress.replace(/\n/g, ", ") : ""),
+    customer.poNumber ? "PO: " + customer.poNumber : "",
+    customer.notes ? "Notes: " + customer.notes : "",
+    "",
+    buildSummary_(items),
+    "",
+    "Cases: " + totals.totalCases + " · Subtotal: " + formatMoney_(totals.subtotal),
+    taxSummaryLabel_(totals) + ": " + formatMoney_(totals.tax),
+    "Estimated total: " + formatMoney_(totals.total),
+    "Received: " + now
+  ];
+  return details.filter(Boolean).join("\n");
+}
+
+function buildCustomerEmailText_(orderId, customer, items, totals, settings) {
+  return [
+    "Designated Drinks Wholesale",
+    "",
+    "Hi " + customer.contact + ",",
+    "We received " + customer.company + "'s wholesale order (" + orderId + ").",
+    "",
+    buildSummary_(items),
+    "",
+    "Cases: " + totals.totalCases,
+    "Subtotal: " + formatMoney_(totals.subtotal),
+    taxSummaryLabel_(totals) + ": " + formatMoney_(totals.tax),
+    "Estimated total: " + formatMoney_(totals.total),
+    "",
+    settings.shipping_message,
+    "We'll confirm final availability, timing and freight before invoicing.",
+    "",
+    "Questions? " + settings.support_email
+  ].join("\n");
+}
+
+function buildSummary_(items) {
+  return items.map(function (item) {
+    return item.displayTitle + " · " + item.cases + " case" + (item.cases === 1 ? "" : "s") +
+      " · " + formatMoney_(item.lineTotal);
+  }).join("\n");
+}
+
+function buildSalesEmailHtml_(now, orderId, customer, items, totals) {
+  const metaRows = [
+    buildEmailMetaRow_("Contact", customer.contact),
+    buildEmailMetaRow_("Email", customer.email),
+    buildEmailMetaRow_("Phone", customer.phone),
+    buildEmailMetaRow_("Fulfilment", customer.fulfilment),
+    customer.deliveryAddress ? buildEmailMetaRow_("Delivery address", htmlMultiline_(customer.deliveryAddress), true) : "",
+    customer.poNumber ? buildEmailMetaRow_("PO number", customer.poNumber) : "",
+    customer.notes ? buildEmailMetaRow_("Notes", htmlMultiline_(customer.notes), true) : ""
+  ].join("");
+
+  const content = [
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 22px;border-collapse:collapse">',
+      '<tr><td style="padding:18px 20px;background:#f4f7fa;border:1px solid #dce5ec;border-radius:14px">',
+        '<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#597086;margin-bottom:6px">Customer</div>',
+        '<div style="font-size:22px;line-height:1.25;font-weight:800;color:#071c33;margin-bottom:14px">' + htmlEscape_(customer.company) + '</div>',
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">' + metaRows + '</table>',
+      '</td></tr>',
+    '</table>',
+    buildEmailProductsHtml_(items),
+    buildEmailTotalsHtml_(totals),
+    '<div style="margin-top:22px;padding:16px 18px;background:#eaf5ff;border-radius:12px;color:#24435f;font-size:13px;line-height:1.55">',
+      '<strong>Received:</strong> ' + htmlEscape_(formatEmailDate_(now)) + '<br>',
+      'Reply directly to this email to respond to ' + htmlEscape_(customer.contact) + '.',
+    '</div>'
+  ].join("");
+
+  return buildEmailShell_(
+    "NEW WHOLESALE ORDER",
+    "Order " + orderId,
+    "A new wholesale order has been recorded and verified.",
+    content,
+    "Internal Designated Drinks notification"
+  );
+}
+
+function buildCustomerEmailHtml_(orderId, customer, items, totals, settings) {
+  const fulfilmentTitle = customer.fulfilment === "Pickup" ? "Pickup" : "Delivery";
+  const fulfilmentCopy = customer.fulfilment === "Pickup"
+    ? "We'll confirm when your order is ready for pickup."
+    : "We'll confirm delivery timing and freight before invoicing.";
+
+  const content = [
+    '<div style="margin:0 0 22px;font-size:15px;line-height:1.65;color:#42586b">',
+      'Hi ' + htmlEscape_(customer.contact) + ',<br><br>',
+      'We received the wholesale order for <strong style="color:#071c33">' + htmlEscape_(customer.company) + '</strong>. ',
+      'Here’s a clean summary of what was submitted.',
+    '</div>',
+    buildEmailProductsHtml_(items),
+    buildEmailTotalsHtml_(totals),
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:22px;border-collapse:separate;border-spacing:0">',
+      '<tr><td style="padding:18px 20px;background:#f4f7fa;border:1px solid #dce5ec;border-radius:14px">',
+        '<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#597086;margin-bottom:7px">' + htmlEscape_(fulfilmentTitle) + '</div>',
+        customer.deliveryAddress ? '<div style="font-size:14px;line-height:1.55;color:#071c33;margin-bottom:8px">' + htmlMultiline_(customer.deliveryAddress) + '</div>' : '',
+        '<div style="font-size:13px;line-height:1.55;color:#597086">' + htmlEscape_(fulfilmentCopy) + '</div>',
+      '</td></tr>',
+    '</table>',
+    '<div style="margin-top:18px;padding:16px 18px;background:#eaf5ff;border-radius:12px;color:#24435f;font-size:13px;line-height:1.55">',
+      htmlEscape_(settings.shipping_message) + '<br>',
+      'This confirms your order request; it is not the final invoice.',
+    '</div>'
+  ].join("");
+
+  return buildEmailShell_(
+    "ORDER RECEIVED",
+    "Thanks, " + customer.contact + ".",
+    "Order " + orderId,
+    content,
+    'Questions? <a href="mailto:' + htmlEscape_(settings.support_email) + '" style="color:#1684d9;text-decoration:none;font-weight:700">' + htmlEscape_(settings.support_email) + '</a>'
+  );
+}
+
+function buildEmailProductsHtml_(items) {
+  const rows = items.map(function (item, index) {
+    const border = index === items.length - 1 ? "" : "border-bottom:1px solid #e4ebf0;";
+    const image = item.imageUrl
+      ? '<img src="' + htmlEscape_(item.imageUrl) + '" width="64" alt="' + htmlEscape_(item.brand + " " + item.name) + '" style="display:block;width:64px;max-width:64px;height:auto;max-height:92px;margin:0 auto">'
+      : '<div style="width:64px;height:72px;line-height:72px;text-align:center;border-radius:8px;background:#eef3f6;color:#7b8d9d;font-size:11px;font-weight:800">DRINK</div>';
+
+    return [
+      '<tr>',
+        '<td width="82" valign="middle" style="padding:14px 10px 14px 0;' + border + '">' + image + '</td>',
+        '<td valign="middle" style="padding:14px 10px;' + border + '">',
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.055em;text-transform:uppercase;color:#1684d9;margin-bottom:4px">' + htmlEscape_(item.brand) + '</div>',
+          '<div style="font-size:15px;line-height:1.35;font-weight:800;color:#071c33">' + htmlEscape_(item.name) + '</div>',
+          '<div style="font-size:12px;line-height:1.45;color:#708293;margin-top:5px">' + htmlEscape_(item.caseFormat) + ' · ' + item.cases + ' case' + (item.cases === 1 ? '' : 's') + '</div>',
+        '</td>',
+        '<td width="94" valign="middle" align="right" style="padding:14px 0 14px 10px;' + border + '">',
+          '<div style="font-size:15px;font-weight:800;color:#071c33">' + formatMoney_(item.lineTotal) + '</div>',
+          '<div style="font-size:11px;color:#8292a0;margin-top:3px">' + formatMoney_(item.unitPrice) + ' / case</div>',
+        '</td>',
+      '</tr>'
+    ].join("");
+  }).join("");
+
+  return [
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#ffffff;border:1px solid #dce5ec;border-radius:14px">',
+      '<tr><td colspan="3" style="padding:15px 16px 6px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#597086">Order items</td></tr>',
+      rows,
+    '</table>'
+  ].join("");
+}
+
+function buildEmailTotalsHtml_(totals) {
+  return [
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;border-collapse:separate;border-spacing:0;background:#071c33;border-radius:14px;color:#ffffff">',
+      '<tr>',
+        '<td style="padding:18px 20px;font-size:13px;line-height:1.75;color:#c9d7e3">',
+          'Total cases<br>Subtotal<br>' + htmlEscape_(totals.taxLabel) + ' (' + Math.round(totals.taxRate * 100) + '%)',
+        '</td>',
+        '<td align="right" style="padding:18px 20px;font-size:13px;line-height:1.75;color:#ffffff">',
+          '<strong>' + totals.totalCases + '</strong><br>' + formatMoney_(totals.subtotal) + '<br>' + formatMoney_(totals.tax),
+        '</td>',
+      '</tr>',
+      '<tr><td colspan="2" style="border-top:1px solid #29435d;padding:15px 20px 18px">',
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>',
+          '<td style="font-size:14px;font-weight:700;color:#d9e5ee">Estimated total</td>',
+          '<td align="right" style="font-size:22px;font-weight:800;color:#ffffff">' + formatMoney_(totals.total) + '</td>',
+        '</tr></table>',
+      '</td></tr>',
+    '</table>'
+  ].join("");
+}
+
+function buildEmailShell_(eyebrow, title, subtitle, content, footer) {
+  return [
+    '<!doctype html><html><body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#071c33">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#f2f5f7;margin:0;padding:0">',
+      '<tr><td align="center" style="padding:28px 12px">',
+        '<table role="presentation" width="620" cellspacing="0" cellpadding="0" style="width:100%;max-width:620px;border-collapse:separate;border-spacing:0">',
+          '<tr><td style="padding:18px 22px;background:#071c33;border-radius:16px 16px 0 0">',
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>',
+              '<td width="54"><img src="' + htmlEscape_(CONFIG.BRAND_LOGO_URL) + '" width="44" height="44" alt="Designated Drinks" style="display:block;width:44px;height:44px;border-radius:10px"></td>',
+              '<td style="font-size:15px;font-weight:800;letter-spacing:.02em;color:#ffffff">DESIGNATED DRINKS<br><span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:#9eb5c8">WHOLESALE</span></td>',
+            '</tr></table>',
+          '</td></tr>',
+          '<tr><td style="padding:28px 26px 30px;background:#ffffff;border-radius:0 0 16px 16px">',
+            '<div style="font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#1684d9;margin-bottom:8px">' + htmlEscape_(eyebrow) + '</div>',
+            '<div style="font-size:28px;line-height:1.18;font-weight:800;color:#071c33;margin-bottom:7px">' + htmlEscape_(title) + '</div>',
+            '<div style="font-size:13px;line-height:1.5;color:#708293;margin-bottom:24px">' + htmlEscape_(subtitle) + '</div>',
+            content,
+          '</td></tr>',
+          '<tr><td align="center" style="padding:18px 18px 0;font-size:11px;line-height:1.55;color:#8292a0">',
+            footer + '<br><span style="color:#a0acb7">Designated Drinks · Ontario, Canada</span>',
+          '</td></tr>',
+        '</table>',
+      '</td></tr>',
+    '</table>',
+    '</body></html>'
+  ].join("");
+}
+
+function buildEmailMetaRow_(label, value, valueIsHtml) {
+  const rendered = valueIsHtml ? String(value || "") : htmlEscape_(value);
+  return [
+    '<tr>',
+      '<td width="128" valign="top" style="padding:4px 10px 4px 0;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#7d8e9d">' + htmlEscape_(label) + '</td>',
+      '<td valign="top" style="padding:4px 0;font-size:13px;line-height:1.45;color:#223b52">' + rendered + '</td>',
+    '</tr>'
+  ].join("");
+}
+
+function htmlEscape_(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function htmlMultiline_(value) {
+  return htmlEscape_(value).replace(/\r?\n/g, "<br>");
+}
+
+function formatEmailDate_(value) {
+  try {
+    return Utilities.formatDate(new Date(value), Session.getScriptTimeZone(), "MMM d, yyyy · h:mm a");
+  } catch (error) {
+    return String(value || "");
+  }
+}
+
+function testEmailTemplates() {
+  const catalog = getProductCatalog_(SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID));
+  if (!catalog.publicProducts.length) throw new Error("No products available for email template test.");
+  const product = catalog.publicProducts[0];
+  const items = [{
+    sku: product.sku,
+    displayTitle: product.brand + " – " + product.name,
+    brand: product.brand,
+    name: product.name,
+    caseFormat: product.caseFormat,
+    imageUrl: product.imageUrl,
+    cases: 2,
+    unitPrice: product.casePrice,
+    lineTotal: roundMoney_(product.casePrice * 2)
+  }];
+  const customer = {
+    contact: "Taylor",
+    company: "Example Retailer",
+    email: "buyer@example.ca",
+    phone: "519-555-0100",
+    fulfilment: "Delivery",
+    deliveryAddress: "123 Main Street\nLondon, ON N6P 1A1",
+    poNumber: "PO-1001",
+    notes: "Please call before delivery."
+  };
+  const totals = calculateTotals_(items, { code: "ON", province: "Ontario", label: "HST", rate: 0.13 });
+  const settings = { shipping_message: "Availability and freight are confirmed before invoicing.", support_email: CONFIG.SUPPORT_EMAIL };
+  const internal = buildSalesEmailHtml_(new Date(), "DDW-PREVIEW", customer, items, totals);
+  const external = buildCustomerEmailHtml_("DDW-PREVIEW", customer, items, totals, settings);
+  if (internal.indexOf("<img") === -1 || external.indexOf("<img") === -1) throw new Error("Email product images are missing.");
+  if (internal.indexOf(product.name) === -1 || external.indexOf(product.name) === -1) throw new Error("Email product text is missing.");
+  if (internal.indexOf("<script") !== -1 || external.indexOf("<script") !== -1) throw new Error("Unsafe email HTML detected.");
+  Logger.log("Professional wholesale email templates passed. Product image: " + Boolean(product.imageUrl));
+}
+
+function sendWholesaleEmailPreview() {
+  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const catalog = getProductCatalog_(spreadsheet);
+  const products = catalog.publicProducts.slice(0, Math.min(3, catalog.publicProducts.length));
+  if (!products.length) throw new Error("No products available for email preview.");
+  const items = products.map(function (product, index) {
+    return {
+      sku: product.sku,
+      displayTitle: product.brand + " – " + product.name,
+      brand: product.brand,
+      name: product.name,
+      caseFormat: product.caseFormat,
+      imageUrl: product.imageUrl,
+      cases: index === 0 ? 2 : 1,
+      unitPrice: product.casePrice,
+      lineTotal: roundMoney_(product.casePrice * (index === 0 ? 2 : 1))
+    };
+  });
+  const customer = {
+    contact: "Mike",
+    company: "Designated Drinks Preview",
+    email: CONFIG.SALES_EMAIL,
+    phone: "519-555-0100",
+    fulfilment: "Delivery",
+    deliveryAddress: "123 Main Street\nLondon, ON N6P 1A1",
+    poNumber: "PREVIEW-001",
+    notes: "Email design preview — no order was placed."
+  };
+  const totals = calculateTotals_(items, { code: "ON", province: "Ontario", label: "HST", rate: 0.13 });
+  const settings = { shipping_message: "Availability and freight are confirmed before invoicing.", support_email: CONFIG.SUPPORT_EMAIL };
+  MailApp.sendEmail({
+    to: CONFIG.SALES_EMAIL,
+    subject: "Preview · Customer wholesale order email",
+    body: buildCustomerEmailText_("DDW-PREVIEW", customer, items, totals, settings),
+    htmlBody: buildCustomerEmailHtml_("DDW-PREVIEW", customer, items, totals, settings),
+    name: "Designated Drinks"
+  });
+  MailApp.sendEmail({
+    to: CONFIG.SALES_EMAIL,
+    subject: "Preview · Internal wholesale order email",
+    body: buildSalesEmailText_(new Date(), "DDW-PREVIEW", customer, items, totals),
+    htmlBody: buildSalesEmailHtml_(new Date(), "DDW-PREVIEW", customer, items, totals),
+    name: "Designated Drinks Wholesale"
+  });
+  Logger.log("Sent customer and internal email previews to " + CONFIG.SALES_EMAIL);
+}
+'''
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s, encoding='utf-8')
+
+      - name: Verify Apps Script syntax and email features
+        shell: bash
+        run: |
+          cp apps-script/Code.gs /tmp/Code.js
+          node --check /tmp/Code.js
+          grep -q 'htmlBody:' apps-script/Code.gs
+          grep -q 'imageUrl: product.imageUrl' apps-script/Code.gs
+          grep -q 'function testEmailTemplates()' apps-script/Code.gs
+          grep -q 'function sendWholesaleEmailPreview()' apps-script/Code.gs
+          grep -q 'BRAND_LOGO_URL' apps-script/Code.gs
+          git diff --check
+
+      - name: Commit email upgrade
+        shell: bash
+        run: |
+          rm -f .email-template-upgrade .github/workflows/upgrade-wholesale-emails.yml
+          git config user.name "DesignatedDrinks"
+          git config user.email "designateddrinksonline@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Upgrade wholesale order emails with product imagery"
+          git push origin HEAD:main
