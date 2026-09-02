@@ -1111,35 +1111,35 @@ function transportConfirmedStatus() {
 }
 
 async function pollOrderStatus(getPostState) {
-    const startedAt = Date.now();
-    let lastError = null;
-    await wait(140);
-    while (Date.now() - startedAt < CONFIG.orderConfirmTimeoutMs) {
-      const postState = typeof getPostState === "function" ? getPostState() : null;
+  const startedAt = Date.now();
+  let lastError = null;
+  await wait(140);
+  while (Date.now() - startedAt < CONFIG.orderConfirmTimeoutMs) {
+    const postState = typeof getPostState === "function" ? getPostState() : null;
     if (postState && postState.error) throw postState.error;
-      try {
-        const status = await jsonp(CONFIG.endpoint, {
-          action: "status",
-          submissionId: state.submissionId,
-          _: Date.now()
-        }, CONFIG.statusRequestTimeoutMs);
-        if (status && status.status === "error") throw new Error(status.message || "The order could not be processed.");
-        if (status && status.status === "success") return status;
-        if (status && status.stage === "saved" && status.orderId) return status;
-        lastError = null;
-      } catch (error) {
+    try {
+      const status = await jsonp(CONFIG.endpoint, {
+action: "status",
+submissionId: state.submissionId,
+_: Date.now()
+      }, CONFIG.statusRequestTimeoutMs);
+      if (status && status.status === "error") throw new Error(status.message || "The order could not be processed.");
+      if (status && status.status === "success") return status;
+      if (status && status.stage === "saved" && status.orderId) return status;
+      lastError = null;
+    } catch (error) {
       lastError = error;
       if (error && /could not be processed|missing|required|unavailable|valid|only \d+ case/i.test(error.message || "")) throw error;
       const currentPostState = typeof getPostState === "function" ? getPostState() : null;
       if (currentPostState && currentPostState.completed && !currentPostState.error && isStatusTransportError(error)) {
-        console.warn("Status callback failed after completed order POST; using POST completion as confirmation.", error);
-        return transportConfirmedStatus();
+console.warn("Status callback failed after completed order POST; using POST completion as confirmation.", error);
+return transportConfirmedStatus();
       }
     }
-      await wait(CONFIG.statusPollMs);
-    }
-    throw lastError || new Error("We couldn't confirm the order yet. Your cart is still saved; try the button again safely.");
+    await wait(CONFIG.statusPollMs);
   }
+  throw lastError || new Error("We couldn't confirm the order yet. Your cart is still saved; try the button again safely.");
+}
 
   function resetTransientCheckout() {
     elements["checkout-form"].reset();
