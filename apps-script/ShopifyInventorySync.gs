@@ -1,9 +1,24 @@
 /**
- * Designated Drinks Wholesale — independent Shopify catalogue + inventory sync.
+ * Designated Drinks Wholesale — independent Shopify inventory mirror.
  *
- * Shopify Product ID is the permanent identity.
- * Shopify title, image, vendor, base variant title, and retail price are canonical.
- * Existing wholesale pricing remains 70% of Shopify retail per single unit.
+ * GOVERNING RULES
+ * 1. Shopify is the source of truth for product identity, title, image, vendor,
+ *    retail price and inventory.
+ * 2. Singles are the physical inventory source of truth.
+ * 3. Sheet1 contains ONLY active Shopify beverages that can make at least one
+ *    complete 24-unit wholesale case.
+ * 4. If a product falls below 24 available singles, it disappears from Sheet1.
+ * 5. If it rises back to 24+ singles, it reappears automatically.
+ * 6. ChatGPT is not part of the production sync path.
+ *
+ * Required Apps Script Properties:
+ *   SHOPIFY_SHOP          designateddrinks (or designateddrinks.myshopify.com)
+ *   SHOPIFY_CLIENT_ID     Shopify Dev Dashboard app Client ID
+ *   SHOPIFY_CLIENT_SECRET Shopify Dev Dashboard app Client secret
+ *
+ * Required Shopify scopes:
+ *   read_products
+ *   read_inventory
  */
 const SHOPIFY_SYNC_CONFIG = Object.freeze({
   SPREADSHEET_ID: "17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8",
@@ -15,10 +30,13 @@ const SHOPIFY_SYNC_CONFIG = Object.freeze({
   CLIENT_ID_PROPERTY: "SHOPIFY_CLIENT_ID",
   CLIENT_SECRET_PROPERTY: "SHOPIFY_CLIENT_SECRET",
   LAST_RESULT_PROPERTY: "SHOPIFY_SYNC_LAST_RESULT",
+  SKU_MAP_PROPERTY: "SHOPIFY_WHOLESALE_SKU_MAP",
   TIME_ZONE: "America/Toronto",
   TRIGGER_HOUR: 6,
   HANDLER: "syncShopifyWholesaleInventory",
   FIRST_DATA_ROW: 2,
+  CASE_SIZE: 24,
+  COLUMN_COUNT: 19,
   COL_TITLE: 1,
   COL_PACK_SIZE: 2,
   COL_RETAIL_PRICE: 3,
@@ -38,18 +56,20 @@ const SHOPIFY_SYNC_CONFIG = Object.freeze({
   COL_LAST_SYNC: 17,
   COL_SYNC_STATUS: 18,
   COL_SHOPIFY_PRODUCT_ID: 19,
-  CASE_SIZE: 24,
   MAX_PAGES: 50
 });
 
 function setupShopifyInventorySync() {
   const connection = testShopifyInventoryConnection();
   const spreadsheet = openWholesaleSpreadsheet_();
-  ensureShopifySyncColumns_(getWholesaleProductSheet_(spreadsheet));
+  const sheet = getWholesaleProductSheet_(spreadsheet);
+  ensureShopifySyncColumns_(sheet);
+  seedSkuMapFromSheet_(sheet);
   installShopifyInventoryTrigger_();
   return {
     status: "ready",
     shop: connection.shop,
+    rule: "Sheet1 contains only products with at least one complete 24-unit case",
     trigger: "daily around 6:00 AM America/Toronto",
     apiVersion: SHOPIFY_SYNC_CONFIG.API_VERSION
   };
@@ -58,8 +78,16 @@ function setupShopifyInventorySync() {
 function testShopifyInventoryConnection() {
   const credentials = requireShopifyCredentials_();
   const token = fetchShopifyAccessToken_(credentials);
-  const data = shopifyGraphql_(credentials.shop, token, "query { shop { name myshopifyDomain } }", {});
-  return { status: "success", shop: data.shop && (data.shop.myshopifyDomain || data.shop.name) || credentials.shop };
+  const data = shopifyGraphql_(
+    credentials.shop,
+    token,
+    "query { shop { name myshopifyDomain } }",
+    {}
+  );
+  return {
+    status: "success",
+    shop: data.shop && (data.shop.myshopifyDomain || data.shop.name) || credentials.shop
+  };
 }
 
 function diagnoseShopifyInventorySync() {
@@ -73,6 +101,7 @@ function diagnoseShopifyInventorySync() {
     triggerInstalled: ScriptApp.getProjectTriggers().some(function (trigger) {
       return trigger.getHandlerFunction() === SHOPIFY_SYNC_CONFIG.HANDLER;
     }),
+    rule: "Only Shopify products with 24+ available singles are written to Sheet1",
     lastResult: getLastShopifyInventorySyncResult()
   };
 }
@@ -109,208 +138,85 @@ function syncShopifyWholesaleInventory() {
   try {
     const credentials = requireShopifyCredentials_();
     const token = fetchShopifyAccessToken_(credentials);
+
+    // Fetch everything successfully before touching Sheet1.
     const products = fetchShopifyProductInventory_(credentials.shop, token);
     if (!products.length) throw new Error("Shopify returned no active products.");
+
+    const eligible = products.map(function (product) {
+      const baseVariant = chooseBaseVariant_(product.variants);
+      if (!baseVariant) return null;
+      if (!isEligibleShopifyBeverage_(product, baseVariant)) return null;
+
+      const availableUnits = Math.max(0, Number(baseVariant.inventoryQuantity) || 0);
+      const casesAvailable = Math.floor(availableUnits / SHOPIFY_SYNC_CONFIG.CASE_SIZE);
+      if (casesAvailable < 1) return null;
+
+      return {
+        product: product,
+        variant: baseVariant,
+        availableUnits: availableUnits,
+        casesAvailable: casesAvailable
+      };
+    }).filter(Boolean);
+
+    eligible.sort(function (a, b) {
+      const vendorCompare = cleanSyncText_(a.product.vendor).localeCompare(cleanSyncText_(b.product.vendor), "en", { sensitivity: "base" });
+      if (vendorCompare !== 0) return vendorCompare;
+      return cleanSyncText_(a.product.title).localeCompare(cleanSyncText_(b.product.title), "en", { sensitivity: "base" });
+    });
 
     spreadsheet = openWholesaleSpreadsheet_();
     const sheet = getWholesaleProductSheet_(spreadsheet);
     ensureShopifySyncColumns_(sheet);
 
-    const initialLastRow = Math.max(sheet.getLastRow(), 1);
-    const existingCount = Math.max(0, initialLastRow - 1);
-    const existingValues = existingCount
-      ? sheet.getRange(2, 1, existingCount, SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID).getValues()
-      : [];
-
-    const index = buildShopifyProductIndex_(products);
+    const skuState = buildSkuState_(sheet);
     const syncTime = new Date();
-    const usedProductIds = {};
-    const summary = {
-      rows: existingCount,
-      matched: 0,
-      matchedById: 0,
-      matchedByImage: 0,
-      matchedByTitle: 0,
-      added: 0,
-      available: 0,
-      unavailable: 0,
-      unmatchedProduct: 0,
-      unmatchedVariant: 0,
-      skippedNonSingle: 0
-    };
-
-    const titleOutput = [];
-    const packOutput = [];
-    const retailOutput = [];
-    const imageOutput = [];
-    const statusOutput = [];
-    const brandOutput = [];
-    const categoryOutput = [];
-    const styleOutput = [];
-    const caseFormatOutput = [];
-    const metadataOutput = [];
-
-    existingValues.forEach(function (row) {
-      const existingTitle = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_TITLE - 1]);
-      const existingPack = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_PACK_SIZE - 1]);
-      const existingRetail = row[SHOPIFY_SYNC_CONFIG.COL_RETAIL_PRICE - 1];
-      const existingImage = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_IMAGE_URL - 1]);
-      const existingBrand = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_BRAND - 1]);
-      const existingCategory = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_CATEGORY - 1]);
-      const existingStyle = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_STYLE - 1]);
-      const existingCaseFormat = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_CASE_FORMAT - 1]);
-      const storedProductId = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID - 1]);
-
-      if (!existingTitle) {
-        titleOutput.push([""]);
-        packOutput.push([existingPack]);
-        retailOutput.push([existingRetail || ""]);
-        imageOutput.push([existingImage]);
-        statusOutput.push([""]);
-        brandOutput.push([existingBrand]);
-        categoryOutput.push([existingCategory]);
-        styleOutput.push([existingStyle]);
-        caseFormatOutput.push([existingCaseFormat]);
-        metadataOutput.push(["", "", "", "", "", ""]);
-        return;
-      }
-
-      const resolution = resolveExistingProduct_(storedProductId, existingTitle, existingImage, index);
-      if (!resolution.product) {
-        titleOutput.push([existingTitle]);
-        packOutput.push([existingPack]);
-        retailOutput.push([existingRetail || ""]);
-        imageOutput.push([existingImage]);
-        statusOutput.push(["no"]);
-        brandOutput.push([existingBrand]);
-        categoryOutput.push([existingCategory]);
-        styleOutput.push([existingStyle]);
-        caseFormatOutput.push([existingCaseFormat]);
-        metadataOutput.push(["", "", "", syncTime, "unmatched product", ""]);
-        summary.unmatchedProduct += 1;
-        return;
-      }
-
-      const product = resolution.product;
-      usedProductIds[product.id] = true;
-      const baseVariant = chooseBaseVariant_(product.variants, existingPack);
-      if (!baseVariant) {
-        titleOutput.push([product.title]);
-        packOutput.push([existingPack]);
-        retailOutput.push([existingRetail || ""]);
-        imageOutput.push([product.imageUrl || existingImage]);
-        statusOutput.push(["no"]);
-        brandOutput.push([product.vendor || existingBrand]);
-        categoryOutput.push([inferCategory_(product)]);
-        styleOutput.push([inferStyle_(product.title, inferCategory_(product))]);
-        caseFormatOutput.push([existingCaseFormat || ("24 × " + existingPack)]);
-        metadataOutput.push([product.title, "", "", syncTime, "unmatched inventory variant", product.id]);
-        summary.unmatchedVariant += 1;
-        return;
-      }
-
-      const availableUnits = Math.max(0, Number(baseVariant.inventoryQuantity) || 0);
-      const casesAvailable = Math.floor(availableUnits / SHOPIFY_SYNC_CONFIG.CASE_SIZE);
+    const rows = eligible.map(function (item, index) {
+      const rowNumber = SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW + index;
+      const product = item.product;
+      const variant = item.variant;
       const category = inferCategory_(product);
+      const sku = getStableSku_(product, skuState);
 
-      titleOutput.push([product.title]);
-      packOutput.push([baseVariant.title]);
-      retailOutput.push([Number(baseVariant.price) || existingRetail || ""]);
-      imageOutput.push([product.imageUrl || existingImage]);
-      statusOutput.push([casesAvailable >= 1 ? "yes" : "no"]);
-      brandOutput.push([product.vendor || existingBrand]);
-      categoryOutput.push([category]);
-      styleOutput.push([inferStyle_(product.title, category)]);
-      caseFormatOutput.push([SHOPIFY_SYNC_CONFIG.CASE_SIZE + " × " + baseVariant.title]);
-      metadataOutput.push([product.title, availableUnits, casesAvailable, syncTime, resolution.method, product.id]);
-
-      summary.matched += 1;
-      summary[resolution.summaryKey] += 1;
-      if (casesAvailable >= 1) summary.available += 1;
-      else summary.unavailable += 1;
-    });
-
-    if (existingCount) {
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_TITLE, existingCount, 1).setValues(titleOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_PACK_SIZE, existingCount, 1).setValues(packOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_RETAIL_PRICE, existingCount, 1).setValues(retailOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_IMAGE_URL, existingCount, 1).setValues(imageOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_STATUS, existingCount, 1).setValues(statusOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_BRAND, existingCount, 1).setValues(brandOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_CATEGORY, existingCount, 1).setValues(categoryOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_STYLE, existingCount, 1).setValues(styleOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_CASE_FORMAT, existingCount, 1).setValues(caseFormatOutput);
-      sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH, existingCount, 6).setValues(metadataOutput);
-    }
-
-    const nextSkuNumber = findNextSkuNumber_(existingValues);
-    const nextSortOrder = findNextSortOrder_(existingValues);
-    const newRows = [];
-    let skuNumber = nextSkuNumber;
-    let sortOrder = nextSortOrder;
-
-    products.forEach(function (product) {
-      if (usedProductIds[product.id]) return;
-      const baseVariant = chooseBaseVariant_(product.variants, "");
-      if (!baseVariant || !isEligibleShopifyBeverage_(product, baseVariant)) return;
-
-      const availableUnits = Math.max(0, Number(baseVariant.inventoryQuantity) || 0);
-      const casesAvailable = Math.floor(availableUnits / SHOPIFY_SYNC_CONFIG.CASE_SIZE);
-      const category = inferCategory_(product);
-      const rowNumber = initialLastRow + newRows.length + 1;
-      const sku = "DDW-" + String(skuNumber).padStart(4, "0");
-
-      newRows.push([
+      return [
         product.title,
-        baseVariant.title,
-        Number(baseVariant.price) || 0,
+        variant.title,
+        Number(variant.price) || 0,
         "=ROUND(C" + rowNumber + "*0.7, 2)",
         product.imageUrl || "",
         "=D" + rowNumber + "*" + SHOPIFY_SYNC_CONFIG.CASE_SIZE,
-        casesAvailable >= 1 ? "yes" : "no",
+        "yes",
         sku,
         product.vendor || "",
         category,
         inferStyle_(product.title, category),
-        SHOPIFY_SYNC_CONFIG.CASE_SIZE + " × " + baseVariant.title,
-        sortOrder,
+        SHOPIFY_SYNC_CONFIG.CASE_SIZE + " × " + variant.title,
+        index + 1,
         product.title,
-        availableUnits,
-        casesAvailable,
+        item.availableUnits,
+        item.casesAvailable,
         syncTime,
-        "added from Shopify",
+        "in stock",
         product.id
-      ]);
-
-      skuNumber += 1;
-      sortOrder += 1;
-      summary.added += 1;
-      summary.matched += 1;
-      if (casesAvailable >= 1) summary.available += 1;
-      else summary.unavailable += 1;
+      ];
     });
 
-    if (newRows.length) {
-      const startRow = initialLastRow + 1;
-      const target = sheet.getRange(startRow, 1, newRows.length, SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID);
-      target.setValues(newRows);
-
-      if (initialLastRow >= 2) {
-        sheet.getRange(initialLastRow, 1, 1, SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID)
-          .copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-      }
-      sheet.getRange(startRow, SHOPIFY_SYNC_CONFIG.COL_LAST_SYNC, newRows.length, 1)
-        .setNumberFormat("yyyy-mm-dd hh:mm");
-    }
-
+    persistSkuMap_(skuState.map);
+    replaceSheet1Data_(sheet, rows);
     SpreadsheetApp.flush();
 
     const result = {
       status: "success",
       startedAt: startedAt.toISOString(),
       completedAt: new Date().toISOString(),
-      summary: summary
+      summary: {
+        activeShopifyProducts: products.length,
+        displayedWholesaleProducts: rows.length,
+        hiddenBecauseLessThanOneCase: products.length - rows.length
+      }
     };
+
     storeShopifySyncResult_(result);
     logShopifySync_(spreadsheet, result, "");
     return result;
@@ -336,88 +242,42 @@ function syncShopifyWholesaleInventory() {
   }
 }
 
-function getLastShopifyInventorySyncResult() {
-  const value = PropertiesService.getScriptProperties().getProperty(SHOPIFY_SYNC_CONFIG.LAST_RESULT_PROPERTY);
-  if (!value) return { status: "never-run" };
-  try { return JSON.parse(value); }
-  catch (error) { return { status: "error", error: "Stored result is unreadable." }; }
-}
-
-function resolveExistingProduct_(storedProductId, title, imageUrl, index) {
-  if (storedProductId && index.byId[storedProductId]) {
-    return { product: index.byId[storedProductId], method: "matched product id", summaryKey: "matchedById" };
+function replaceSheet1Data_(sheet, rows) {
+  const requiredLastRow = Math.max(1, rows.length + 1);
+  if (sheet.getMaxRows() < requiredLastRow) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), requiredLastRow - sheet.getMaxRows());
   }
 
-  const imageKey = normalizeImageUrl_(imageUrl);
-  if (imageKey) {
-    const imageMatches = index.byImage[imageKey] || [];
-    if (imageMatches.length === 1) {
-      return { product: imageMatches[0], method: "matched image", summaryKey: "matchedByImage" };
-    }
+  const currentLastRow = Math.max(sheet.getLastRow(), 1);
+  if (currentLastRow >= SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW) {
+    sheet.getRange(
+      SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW,
+      1,
+      currentLastRow - 1,
+      SHOPIFY_SYNC_CONFIG.COLUMN_COUNT
+    ).clearContent();
   }
 
-  const titleMatches = index.byTitle[normalizeTitle_(title)] || [];
-  if (titleMatches.length === 1) {
-    return { product: titleMatches[0], method: "matched exact title", summaryKey: "matchedByTitle" };
+  if (!rows.length) return;
+
+  const target = sheet.getRange(
+    SHOPIFY_SYNC_CONFIG.FIRST_DATA_ROW,
+    1,
+    rows.length,
+    SHOPIFY_SYNC_CONFIG.COLUMN_COUNT
+  );
+  target.setValues(rows);
+
+  // Preserve the existing table look without modifying the values/formulas.
+  if (sheet.getMaxRows() >= 2) {
+    const template = sheet.getRange(2, 1, 1, SHOPIFY_SYNC_CONFIG.COLUMN_COUNT);
+    template.copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
   }
 
-  return { product: null, method: "unmatched product", summaryKey: "unmatchedProduct" };
-}
-
-function chooseBaseVariant_(variants, preferredPackSize) {
-  const eligible = (variants || []).filter(function (variant) {
-    return isSingleUnitVariant_(variant.title);
-  });
-  if (!eligible.length) return null;
-
-  const preferred = normalizePack_(preferredPackSize);
-  if (preferred) {
-    const exact = eligible.filter(function (variant) {
-      return normalizePack_(variant.title) === preferred;
-    });
-    if (exact.length === 1) return exact[0];
-  }
-
-  return eligible.length === 1 ? eligible[0] : null;
-}
-
-function isEligibleShopifyBeverage_(product, variant) {
-  if (!product || !variant || !isSingleUnitVariant_(variant.title)) return false;
-  const productType = cleanSyncText_(product.productType).toLowerCase();
-  const tags = (product.tags || []).map(function (tag) { return cleanSyncText_(tag).toLowerCase(); });
-  const title = cleanSyncText_(product.title).toLowerCase();
-  return productType.indexOf("beverage") !== -1 || tags.some(function (tag) {
-    return tag.indexOf("category_") === 0;
-  }) || title.indexOf("non-alcoholic") !== -1 || title.indexOf("non alcoholic") !== -1;
-}
-
-function isSingleUnitVariant_(value) {
-  const text = normalizePack_(value);
-  if (!text) return false;
-  if (/^\d+pack$/.test(text)) return false;
-  return /\d+ml/.test(text) && /(can|bottle|single)/.test(text);
-}
-
-function buildShopifyProductIndex_(products) {
-  const byId = {};
-  const byImage = {};
-  const byTitle = {};
-
-  products.forEach(function (product) {
-    byId[product.id] = product;
-
-    const image = normalizeImageUrl_(product.imageUrl);
-    if (image) {
-      if (!byImage[image]) byImage[image] = [];
-      byImage[image].push(product);
-    }
-
-    const title = normalizeTitle_(product.title);
-    if (!byTitle[title]) byTitle[title] = [];
-    byTitle[title].push(product);
-  });
-
-  return { byId: byId, byImage: byImage, byTitle: byTitle };
+  sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_RETAIL_PRICE, rows.length, 2)
+    .setNumberFormat("0.00");
+  sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_LAST_SYNC, rows.length, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm");
 }
 
 function fetchShopifyProductInventory_(shop, token) {
@@ -450,11 +310,15 @@ function fetchShopifyProductInventory_(shop, token) {
 
   do {
     page += 1;
-    if (page > SHOPIFY_SYNC_CONFIG.MAX_PAGES) throw new Error("Shopify pagination exceeded the safety limit.");
+    if (page > SHOPIFY_SYNC_CONFIG.MAX_PAGES) {
+      throw new Error("Shopify pagination exceeded the safety limit.");
+    }
 
     const data = shopifyGraphql_(shop, token, query, { after: after });
     const connection = data.productVariants;
-    if (!connection || !Array.isArray(connection.nodes)) throw new Error("Shopify inventory response was incomplete.");
+    if (!connection || !Array.isArray(connection.nodes)) {
+      throw new Error("Shopify inventory response was incomplete.");
+    }
 
     connection.nodes.forEach(function (variant) {
       if (!variant || !variant.product) return;
@@ -483,14 +347,51 @@ function fetchShopifyProductInventory_(shop, token) {
       });
     });
 
-    after = connection.pageInfo && connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    after = connection.pageInfo && connection.pageInfo.hasNextPage
+      ? connection.pageInfo.endCursor
+      : null;
   } while (after);
 
   return Object.keys(productsById).map(function (key) { return productsById[key]; });
 }
 
+function chooseBaseVariant_(variants) {
+  const eligible = (variants || []).filter(function (variant) {
+    return isSingleUnitVariant_(variant.title);
+  });
+  if (eligible.length === 1) return eligible[0];
+
+  // Never guess when Shopify has multiple possible single-unit variants.
+  return null;
+}
+
+function isEligibleShopifyBeverage_(product, variant) {
+  if (!product || !variant || !isSingleUnitVariant_(variant.title)) return false;
+
+  const type = cleanSyncText_(product.productType).toLowerCase();
+  const tags = (product.tags || []).map(function (tag) {
+    return cleanSyncText_(tag).toLowerCase();
+  });
+  const title = cleanSyncText_(product.title).toLowerCase();
+
+  return type.indexOf("beverage") !== -1 ||
+    tags.some(function (tag) { return tag.indexOf("category_") === 0; }) ||
+    title.indexOf("non-alcoholic") !== -1 ||
+    title.indexOf("non alcoholic") !== -1;
+}
+
+function isSingleUnitVariant_(value) {
+  const text = normalizePack_(value);
+  if (!text) return false;
+  if (/^\d+pack$/.test(text)) return false;
+  return /\d+ml/.test(text) && /(can|bottle|single)/.test(text);
+}
+
 function inferCategory_(product) {
-  const tags = (product.tags || []).map(function (tag) { return cleanSyncText_(tag).toLowerCase(); });
+  const tags = (product.tags || []).map(function (tag) {
+    return cleanSyncText_(tag).toLowerCase();
+  });
+
   if (tags.indexOf("category_beer") !== -1) return "Beer";
   if (tags.indexOf("category_cider") !== -1) return "Cider";
   if (tags.indexOf("category_cocktails") !== -1 || tags.indexOf("category_cocktail") !== -1) return "Cocktails";
@@ -520,27 +421,61 @@ function inferStyle_(title, category) {
     ["Amber Ale", /amber/],
     ["Radler", /radler/]
   ];
+
   for (let index = 0; index < rules.length; index += 1) {
     if (rules[index][1].test(value)) return rules[index][0];
   }
   return category;
 }
 
-function findNextSkuNumber_(rows) {
-  let max = 0;
-  rows.forEach(function (row) {
-    const match = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_SKU - 1]).match(/^DDW-(\d+)$/i);
-    if (match) max = Math.max(max, Number(match[1]) || 0);
+function buildSkuState_(sheet) {
+  const properties = PropertiesService.getScriptProperties();
+  let map = {};
+  try {
+    map = JSON.parse(properties.getProperty(SHOPIFY_SYNC_CONFIG.SKU_MAP_PROPERTY) || "{}");
+  } catch (error) {
+    map = {};
+  }
+
+  let next = 1;
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    const rows = sheet.getRange(2, 1, lastRow - 1, SHOPIFY_SYNC_CONFIG.COLUMN_COUNT).getValues();
+    rows.forEach(function (row) {
+      const productId = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_PRODUCT_ID - 1]);
+      const sku = cleanSyncText_(row[SHOPIFY_SYNC_CONFIG.COL_SKU - 1]);
+      if (productId && sku) map[productId] = sku;
+      const match = sku.match(/^DDW-(\d+)$/i);
+      if (match) next = Math.max(next, Number(match[1]) + 1);
+    });
+  }
+
+  Object.keys(map).forEach(function (key) {
+    const match = cleanSyncText_(map[key]).match(/^DDW-(\d+)$/i);
+    if (match) next = Math.max(next, Number(match[1]) + 1);
   });
-  return max + 1;
+
+  return { map: map, next: next };
 }
 
-function findNextSortOrder_(rows) {
-  let max = 0;
-  rows.forEach(function (row) {
-    max = Math.max(max, Number(row[SHOPIFY_SYNC_CONFIG.COL_SORT_ORDER - 1]) || 0);
-  });
-  return max + 1;
+function seedSkuMapFromSheet_(sheet) {
+  const state = buildSkuState_(sheet);
+  persistSkuMap_(state.map);
+}
+
+function getStableSku_(product, state) {
+  if (state.map[product.id]) return state.map[product.id];
+  const sku = "DDW-" + String(state.next).padStart(4, "0");
+  state.map[product.id] = sku;
+  state.next += 1;
+  return sku;
+}
+
+function persistSkuMap_(map) {
+  PropertiesService.getScriptProperties().setProperty(
+    SHOPIFY_SYNC_CONFIG.SKU_MAP_PROPERTY,
+    JSON.stringify(map || {})
+  );
 }
 
 function ensureShopifySyncColumns_(sheet) {
@@ -553,10 +488,27 @@ function ensureShopifySyncColumns_(sheet) {
     "Shopify Product ID"
   ];
   sheet.getRange(1, SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH, 1, headers.length).setValues([headers]);
-  sheet.getRange(2, SHOPIFY_SYNC_CONFIG.COL_LAST_SYNC, Math.max(1, sheet.getMaxRows() - 1), 1)
-    .setNumberFormat("yyyy-mm-dd hh:mm");
-  try { sheet.hideColumns(SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH, headers.length); }
-  catch (error) { console.warn("Could not hide Shopify sync columns:", error); }
+  try {
+    sheet.hideColumns(SHOPIFY_SYNC_CONFIG.COL_SHOPIFY_MATCH, headers.length);
+  } catch (error) {
+    console.warn("Could not hide Shopify sync columns:", error);
+  }
+}
+
+function getLastShopifyInventorySyncResult() {
+  const value = PropertiesService.getScriptProperties().getProperty(
+    SHOPIFY_SYNC_CONFIG.LAST_RESULT_PROPERTY
+  );
+  if (!value) return { status: "never-run" };
+  try { return JSON.parse(value); }
+  catch (error) { return { status: "error", error: "Stored result is unreadable." }; }
+}
+
+function storeShopifySyncResult_(result) {
+  PropertiesService.getScriptProperties().setProperty(
+    SHOPIFY_SYNC_CONFIG.LAST_RESULT_PROPERTY,
+    JSON.stringify(result)
+  );
 }
 
 function openWholesaleSpreadsheet_() {
@@ -565,27 +517,36 @@ function openWholesaleSpreadsheet_() {
 
 function getWholesaleProductSheet_(spreadsheet) {
   const sheet = spreadsheet.getSheetByName(SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME);
-  if (!sheet) throw new Error('Wholesale product sheet "' + SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME + '" was not found.');
+  if (!sheet) {
+    throw new Error('Wholesale product sheet "' + SHOPIFY_SYNC_CONFIG.PRODUCTS_SHEET_NAME + '" was not found.');
+  }
   return sheet;
 }
 
 function fetchShopifyAccessToken_(credentials) {
-  const response = UrlFetchApp.fetch("https://" + credentials.shop + ".myshopify.com/admin/oauth/access_token", {
-    method: "post",
-    contentType: "application/x-www-form-urlencoded",
-    payload: {
-      grant_type: "client_credentials",
-      client_id: credentials.clientId,
-      client_secret: credentials.clientSecret
-    },
-    muteHttpExceptions: true
-  });
+  const response = UrlFetchApp.fetch(
+    "https://" + credentials.shop + ".myshopify.com/admin/oauth/access_token",
+    {
+      method: "post",
+      contentType: "application/x-www-form-urlencoded",
+      payload: {
+        grant_type: "client_credentials",
+        client_id: credentials.clientId,
+        client_secret: credentials.clientSecret
+      },
+      muteHttpExceptions: true
+    }
+  );
 
   const statusCode = response.getResponseCode();
   let payload = {};
   try { payload = JSON.parse(response.getContentText()); } catch (error) {}
+
   if (statusCode < 200 || statusCode >= 300 || !payload.access_token) {
-    throw new Error("Shopify authentication failed (HTTP " + statusCode + "). " + cleanShopifyError_(payload, response.getContentText()));
+    throw new Error(
+      "Shopify authentication failed (HTTP " + statusCode + "). " +
+      cleanShopifyError_(payload, response.getContentText())
+    );
   }
   return payload.access_token;
 }
@@ -605,11 +566,19 @@ function shopifyGraphql_(shop, token, query, variables) {
   const statusCode = response.getResponseCode();
   let body = {};
   try { body = JSON.parse(response.getContentText()); } catch (error) {}
+
   if (statusCode < 200 || statusCode >= 300) {
-    throw new Error("Shopify GraphQL request failed (HTTP " + statusCode + "). " + cleanShopifyError_(body, response.getContentText()));
+    throw new Error(
+      "Shopify GraphQL request failed (HTTP " + statusCode + "). " +
+      cleanShopifyError_(body, response.getContentText())
+    );
   }
   if (body.errors && body.errors.length) {
-    throw new Error("Shopify GraphQL error: " + body.errors.map(function (item) { return item.message; }).join("; "));
+    throw new Error(
+      "Shopify GraphQL error: " + body.errors.map(function (item) {
+        return item.message;
+      }).join("; ")
+    );
   }
   if (!body.data) throw new Error("Shopify GraphQL returned no data.");
   return body.data;
@@ -621,46 +590,53 @@ function requireShopifyCredentials_() {
   const clientId = cleanSyncText_(properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_ID_PROPERTY));
   const clientSecret = cleanSyncText_(properties.getProperty(SHOPIFY_SYNC_CONFIG.CLIENT_SECRET_PROPERTY));
   const missing = [];
+
   if (!shop) missing.push(SHOPIFY_SYNC_CONFIG.SHOP_PROPERTY);
   if (!clientId) missing.push(SHOPIFY_SYNC_CONFIG.CLIENT_ID_PROPERTY);
   if (!clientSecret) missing.push(SHOPIFY_SYNC_CONFIG.CLIENT_SECRET_PROPERTY);
-  if (missing.length) throw new Error("Missing Apps Script properties: " + missing.join(", ") + ".");
+  if (missing.length) {
+    throw new Error("Missing Apps Script properties: " + missing.join(", ") + ".");
+  }
+
   return { shop: shop, clientId: clientId, clientSecret: clientSecret };
 }
 
 function normalizeShopDomain_(value) {
-  return cleanSyncText_(value).toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\.myshopify\.com$/, "");
-}
-
-function normalizeTitle_(value) {
-  let text = cleanSyncText_(value).toLowerCase();
-  try { text = text.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch (error) {}
-  return text.replace(/[’‘]/g, "'").replace(/[–—−]/g, "-").replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function normalizeImageUrl_(value) {
-  return cleanSyncText_(value).replace(/[?&]v=\d+.*$/i, "").replace(/^https?:\/\//i, "").toLowerCase();
+  return cleanSyncText_(value)
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.myshopify\.com$/, "");
 }
 
 function normalizePack_(value) {
-  return cleanSyncText_(value).toLowerCase().replace(/millilitres?|milliliters?/g, "ml").replace(/[^a-z0-9]/g, "");
-}
-
-function storeShopifySyncResult_(result) {
-  PropertiesService.getScriptProperties().setProperty(SHOPIFY_SYNC_CONFIG.LAST_RESULT_PROPERTY, JSON.stringify(result));
+  return cleanSyncText_(value)
+    .toLowerCase()
+    .replace(/millilitres?|milliliters?/g, "ml")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function logShopifySync_(spreadsheet, result, errorMessage) {
   const logs = spreadsheet.getSheetByName(SHOPIFY_SYNC_CONFIG.LOGS_SHEET_NAME);
   if (!logs) return;
+
   const s = result && result.summary ? result.summary : {};
   const text = result && result.status === "success"
-    ? ["matched=" + (s.matched || 0), "added=" + (s.added || 0), "available=" + (s.available || 0),
-       "unavailable=" + (s.unavailable || 0), "unmatchedProduct=" + (s.unmatchedProduct || 0),
-       "unmatchedVariant=" + (s.unmatchedVariant || 0)].join(", ")
+    ? [
+        "shopify=" + (s.activeShopifyProducts || 0),
+        "displayed=" + (s.displayedWholesaleProducts || 0),
+        "hidden=" + (s.hiddenBecauseLessThanOneCase || 0)
+      ].join(", ")
     : "failed";
-  logs.appendRow([new Date(), "", "", "SHOPIFY_INVENTORY_SYNC", safeSyncSheetCell_(text), safeSyncSheetCell_(errorMessage || "")]);
+
+  logs.appendRow([
+    new Date(),
+    "",
+    "",
+    "SHOPIFY_INVENTORY_SYNC",
+    safeSyncSheetCell_(text),
+    safeSyncSheetCell_(errorMessage || "")
+  ]);
 }
 
 function notifyShopifySyncFailure_(message) {
@@ -668,8 +644,14 @@ function notifyShopifySyncFailure_(message) {
     MailApp.sendEmail({
       to: SHOPIFY_SYNC_CONFIG.FAILURE_EMAIL,
       subject: "Wholesale Shopify inventory sync failed",
-      body: "The daily Shopify → Designated Wholesale sync failed.\n\nError: " + message +
-        "\n\nCustomer-visible product availability may be stale. Open Apps Script Executions for details.",
+      body: [
+        "The daily Shopify → Designated Wholesale inventory sync failed.",
+        "",
+        "Error: " + message,
+        "",
+        "Sheet1 was not intentionally rebuilt after this failure.",
+        "Open Apps Script Executions for details."
+      ].join("\n"),
       name: "Designated Drinks Wholesale"
     });
   } catch (error) {
@@ -683,8 +665,12 @@ function safeSyncSheetCell_(value) {
 }
 
 function cleanShopifyError_(payload, rawText) {
-  if (payload && payload.error_description) return cleanSyncText_(payload.error_description).slice(0, 240);
-  if (payload && payload.error) return cleanSyncText_(payload.error).slice(0, 240);
+  if (payload && payload.error_description) {
+    return cleanSyncText_(payload.error_description).slice(0, 240);
+  }
+  if (payload && payload.error) {
+    return cleanSyncText_(payload.error).slice(0, 240);
+  }
   return cleanSyncText_(rawText).slice(0, 240) || "No error details were returned.";
 }
 
