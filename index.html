@@ -10,9 +10,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="catalogue-ux.css">
+  <link rel="stylesheet" href="catalogue-ux.css?v=20260902-2">
   <script src="checkout-transport.js"></script>
   <script src="app.js" defer></script>
+  <script src="checkout-flow.js?v=20260902-1" defer></script>
   <script src="catalogue-ux.js" defer></script>
 </head>
 <body>
@@ -99,7 +100,7 @@
             <div class="summary-totals">
               <div><span>Total cases</span><strong id="summary-cases">0</strong></div>
               <div class="subtotal"><span>Subtotal</span><strong id="summary-subtotal">$0.00</strong></div>
-              <p>HST and delivery are shown during review.</p>
+              <p>GST/HST and delivery are shown during review.</p>
             </div>
           </div>
           <button id="review-order" class="primary-button" type="button" disabled>
@@ -140,7 +141,7 @@
             <div><dt>HST (13%)</dt><dd id="review-tax">$0.00</dd></div>
             <div class="total-row"><dt>Estimated total</dt><dd id="review-total">$0.00</dd></div>
           </dl>
-          <p class="estimate-note">Final availability and delivery charges are confirmed before invoicing.</p>
+          <p class="estimate-note">GST/HST is based on the delivery province. Final freight is confirmed before invoicing.</p>
         </section>
 
         <form id="checkout-form" class="checkout-form" novalidate>
@@ -148,66 +149,25 @@
             <h3>Contact and fulfilment</h3>
             <span>Required fields</span>
           </div>
-
           <div class="form-grid">
-            <label class="field full-width">
-              <span>Company name</span>
-              <input id="company-name" name="companyName" type="text" autocomplete="organization" maxlength="160" required>
-              <small class="field-error"></small>
-            </label>
-            <label class="field">
-              <span>Contact name</span>
-              <input id="contact-name" name="fullName" type="text" autocomplete="name" maxlength="120" required>
-              <small class="field-error"></small>
-            </label>
-            <label class="field">
-              <span>Email</span>
-              <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
-              <small class="field-error"></small>
-            </label>
-            <label class="field full-width">
-              <span>Phone</span>
-              <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40" required>
-              <small class="field-error"></small>
-            </label>
+            <label class="field full-width"><span>Company name</span><input id="company-name" name="companyName" type="text" autocomplete="organization" maxlength="160" required><small class="field-error"></small></label>
+            <label class="field"><span>Contact name</span><input id="contact-name" name="fullName" type="text" autocomplete="name" maxlength="120" required><small class="field-error"></small></label>
+            <label class="field"><span>Email</span><input id="email" name="email" type="email" autocomplete="email" maxlength="200" required><small class="field-error"></small></label>
+            <label class="field full-width"><span>Phone</span><input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40" required><small class="field-error"></small></label>
           </div>
-
           <fieldset class="fulfilment-choice">
             <legend>How would you like to receive the order?</legend>
-            <label>
-              <input type="radio" name="fulfilment" value="Delivery" checked>
-              <span><strong>Delivery</strong><small>We’ll confirm timing and freight.</small></span>
-            </label>
-            <label>
-              <input type="radio" name="fulfilment" value="Pickup">
-              <span><strong>Pickup</strong><small>We’ll confirm when it is ready.</small></span>
-            </label>
+            <label><input type="radio" name="fulfilment" value="Delivery" checked><span><strong>Delivery</strong><small>We’ll confirm timing and freight.</small></span></label>
+            <label><input type="radio" name="fulfilment" value="Pickup"><span><strong>Pickup</strong><small>We’ll confirm when it is ready.</small></span></label>
           </fieldset>
-
-          <label id="address-field" class="field">
-            <span>Delivery address</span>
-            <textarea id="delivery-address" name="deliveryAddress" rows="2" maxlength="300" autocomplete="street-address" required></textarea>
-            <small class="field-error"></small>
-          </label>
-
+          <label id="address-field" class="field"><span>Delivery address</span><textarea id="delivery-address" name="deliveryAddress" rows="2" maxlength="300" autocomplete="street-address" required></textarea><small class="field-error"></small></label>
           <div class="form-grid optional-fields">
-            <label class="field">
-              <span>PO number <em>Optional</em></span>
-              <input name="poNumber" type="text" maxlength="80">
-            </label>
-            <label class="field">
-              <span>Order notes <em>Optional</em></span>
-              <input name="notes" type="text" maxlength="500">
-            </label>
+            <label class="field"><span>PO number <em>Optional</em></span><input name="poNumber" type="text" maxlength="80"></label>
+            <label class="field"><span>Order notes <em>Optional</em></span><input name="notes" type="text" maxlength="500"></label>
           </div>
-
           <label class="honeypot" aria-hidden="true">Website<input name="website" type="text" tabindex="-1" autocomplete="off"></label>
-
           <div id="form-alert" class="form-alert" role="alert" hidden></div>
-          <button id="place-order" class="primary-button place-order" type="submit">
-            <span>Place wholesale order</span>
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg>
-          </button>
+          <button id="place-order" class="primary-button place-order" type="submit"><span>Place wholesale order</span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13 5-1.4 1.4 4.6 4.6H4v2h12.2l-4.6 4.6L13 19l7-7-7-7Z"/></svg></button>
           <p class="form-footnote">This submits an order request, not a final invoice.</p>
         </form>
       </div>
@@ -216,17 +176,12 @@
 
   <dialog id="success-dialog" class="success-dialog" aria-labelledby="success-title">
     <div class="success-card">
-      <div class="success-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="m9.2 16.6-4.6-4.5L6 10.7l3.2 3.2L18 5.2l1.4 1.4-10.2 10Z"/></svg>
-      </div>
+      <div class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9.2 16.6-4.6-4.5L6 10.7l3.2 3.2L18 5.2l1.4 1.4-10.2 10Z"/></svg></div>
       <p class="eyebrow">Order received</p>
       <h2 id="success-title">You’re all set.</h2>
       <p class="success-reference">Order <strong id="success-order-id"></strong></p>
       <p>We’ve safely recorded your wholesale order.</p>
-      <div class="success-summary">
-        <strong id="success-cases">0 cases</strong>
-        <span id="success-total">$0.00 estimated total</span>
-      </div>
+      <div class="success-summary"><strong id="success-cases">0 cases</strong><span id="success-total">$0.00 estimated total</span></div>
       <p class="success-email">Confirmation sent to <strong id="success-email"></strong></p>
       <p class="success-next">We’ll contact you if there are any availability or delivery issues.</p>
       <button id="place-another-order" class="secondary-button" type="button">Place another order</button>
