@@ -1,5 +1,5 @@
 /**
- * Designated Drinks Wholesale backend v8.0
+ * Designated Drinks Wholesale backend v8.2
  * Reliable order persistence, province-aware GST/HST, live catalogue pricing,
  * server-side inventory caps, idempotent submissions, and fast saved-status polling.
  */
@@ -20,7 +20,7 @@ const CONFIG = Object.freeze({
   PRODUCT_CACHE_SECONDS: 30,
   BRAND_LOGO_URL: "https://designateddrinks.github.io/designated-wholesale/dd-logo.png",
   BRAND_WEBSITE: "https://designateddrinks.ca",
-  VERSION: "8.1"
+  VERSION: "8.2"
 });
 
 const TAX_RULES = Object.freeze({
@@ -683,7 +683,7 @@ function cleanupOldStatuses_() {
       remove.push(key);
     }
   });
-  if (remove.length) properties.deleteProperties(remove);
+  remove.forEach(function (key) {\n    properties.deleteProperty(key);\n  });
 }
 
 function taxSummaryLabel_(totals) {
