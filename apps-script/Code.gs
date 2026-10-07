@@ -683,7 +683,9 @@ function cleanupOldStatuses_() {
       remove.push(key);
     }
   });
-  remove.forEach(function (key) {\n    properties.deleteProperty(key);\n  });
+  remove.forEach(function (key) {
+    properties.deleteProperty(key);
+  });
 }
 
 function taxSummaryLabel_(totals) {
