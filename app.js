@@ -13,16 +13,17 @@
     sheetId: "17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8",
     sheetGid: "0",
     endpoint: "https://script.google.com/macros/s/AKfycbzuvKRNFWQ_uPGNZ4psI9dCIdJFNjE-Fxd51f2TDonEuuLE02d1JUYB1eiMSCEBLs8r/exec",
-    minBackendVersion: "8.3",
+    minBackendVersion: "8.4",
     maxQuantity: 999,
     cartKey: "ddw-wholesale-cart-v3",
     draftKey: "ddw-wholesale-checkout-draft-v3",
     catalogueCacheKey: "ddw-wholesale-catalogue-v3",
     catalogueCacheMs: 5 * 60 * 1000,
     requestTimeoutMs: 10000,
-    statusRequestTimeoutMs: 2500,
-    orderConfirmTimeoutMs: 30000,
-    statusPollMs: 450
+    statusRequestTimeoutMs: 5500,
+    orderConfirmTimeoutMs: 45000,
+    statusPollMs: 650,
+    lateJsonpCleanupMs: 60000
   });
 
   const TAX_RULES = Object.freeze({
@@ -317,20 +318,25 @@
     return /^[A-Z]\d[A-Z] \d[A-Z]\d$/.test(normalizePostal(value));
   }
 
+  function normalizeFulfilment(value) {
+    return String(value || "").trim().toLowerCase() === "pickup" ? "Pickup" : "Delivery";
+  }
+
   function getTaxRule(province, fulfilment) {
-    const code = String(fulfilment || "Delivery") === "Pickup" ? "ON" : String(province || "").toUpperCase();
+    const code = normalizeFulfilment(fulfilment) === "Pickup" ? "ON" : String(province || "").toUpperCase();
     return TAX_RULES[code] ? Object.assign({ code: code }, TAX_RULES[code]) : null;
   }
 
   function validateCheckout(data) {
     const source = data || {};
     const errors = {};
+    const fulfilment = normalizeFulfilment(source.fulfilment);
     if (!String(source.companyName || "").trim()) errors.companyName = "Enter the company name.";
     if (!String(source.fullName || "").trim()) errors.fullName = "Enter the contact name.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(source.email || "").trim())) errors.email = "Enter a valid email address.";
     if (String(source.phone || "").replace(/\D/g, "").length < 7) errors.phone = "Enter a valid phone number.";
 
-    if (source.fulfilment === "Delivery") {
+    if (fulfilment === "Delivery") {
       if (!String(source.addressLine1 || "").trim()) errors.addressLine1 = "Enter the street address.";
       if (!String(source.city || "").trim()) errors.city = "Enter the city.";
       if (!TAX_RULES[String(source.province || "").toUpperCase()]) errors.province = "Select the province.";
@@ -365,10 +371,10 @@
       "catalogue", "catalogue-status", "product-grid", "empty-state", "empty-state-title", "empty-state-copy",
       "clear-filters", "search-input", "category-filters", "brewery-filter", "sort-products", "catalogue-clear-all",
       "catalogue-results-count", "catalogue-results-detail", "summary-empty", "summary-content", "summary-items",
-      "summary-cases", "summary-subtotal", "summary-count-badge", "review-order", "review-order-label",
+      "summary-cases", "summary-subtotal", "summary-count-badge", "clear-order", "review-order", "review-order-label",
       "mobile-order-bar", "mobile-cases", "mobile-subtotal", "checkout-dialog", "close-checkout", "review-items",
       "review-case-count", "review-subtotal", "review-tax-label", "review-tax", "review-total", "tax-destination",
-      "checkout-form", "address-field", "delivery-address", "checkout-tax-context", "checkout-tax-rate",
+      "checkout-form", "address-field", "pickup-card", "delivery-address", "checkout-tax-context", "checkout-tax-rate",
       "form-alert", "place-order", "place-order-label", "success-dialog", "success-order-id", "success-cases",
       "success-total", "success-email", "success-email-message", "place-another-order", "live-status"
     ].forEach(function (id) {
@@ -405,15 +411,22 @@
       const query = new URLSearchParams(Object.assign({}, params, { callback: callback }));
       let finished = false;
       const timer = window.setTimeout(function () {
-        cleanup();
+        cleanup(true);
         reject(new Error("The request timed out."));
       }, timeoutMs || CONFIG.requestTimeoutMs);
 
-      function cleanup() {
+      function cleanup(keepLateCallback) {
         if (finished) return;
         finished = true;
         window.clearTimeout(timer);
-        try { delete window[callback]; } catch (error) { window[callback] = undefined; }
+        if (keepLateCallback) {
+          window[callback] = function () {};
+          window.setTimeout(function () {
+            try { delete window[callback]; } catch (error) { window[callback] = undefined; }
+          }, CONFIG.lateJsonpCleanupMs);
+        } else {
+          try { delete window[callback]; } catch (error) { window[callback] = undefined; }
+        }
         script.remove();
       }
 
@@ -846,8 +859,18 @@
     elements["summary-items"].replaceChildren(fragment);
   }
 
+  function clearOrder() {
+    if (!state.cart.size) return;
+    if (!window.confirm("Clear every case from this order?")) return;
+    state.cart.clear();
+    persistCart();
+    updateAllCardQuantities();
+    renderOrderSummary();
+    announce("Order cleared.");
+  }
+
   function buildDeliveryAddress(data) {
-    if (data.fulfilment !== "Delivery") return "";
+    if (normalizeFulfilment(data.fulfilment) !== "Delivery") return "";
     const lines = [String(data.addressLine1 || "").trim()];
     if (String(data.addressLine2 || "").trim()) lines.push(String(data.addressLine2).trim());
     const cityLine = String(data.city || "").trim() +
@@ -859,7 +882,7 @@
 
   function getFormData() {
     const formData = new FormData(elements["checkout-form"]);
-    const fulfilment = String(formData.get("fulfilment") || "Delivery");
+    const fulfilment = normalizeFulfilment(formData.get("fulfilment"));
     const data = {
       companyName: String(formData.get("companyName") || "").trim(),
       fullName: String(formData.get("fullName") || "").trim(),
@@ -896,7 +919,8 @@
       if (field && !field.value && draft[name]) field.value = draft[name];
     });
     if (draft.fulfilment) {
-      const radio = elements["checkout-form"].querySelector('[name="fulfilment"][value="' + draft.fulfilment + '"]');
+      const fulfilment = normalizeFulfilment(draft.fulfilment);
+      const radio = elements["checkout-form"].querySelector('[name="fulfilment"][value="' + fulfilment + '"]');
       if (radio) radio.checked = true;
     }
   }
@@ -962,15 +986,22 @@
     const data = getFormData();
     const delivery = data.fulfilment === "Delivery";
     elements["address-field"].hidden = !delivery;
-    ["addressLine1", "city", "province", "postalCode"].forEach(function (name) {
+    if (elements["pickup-card"]) elements["pickup-card"].hidden = delivery;
+    ["addressLine1", "addressLine2", "city", "province", "postalCode"].forEach(function (name) {
       const field = elements["checkout-form"].elements[name];
-      if (field) field.required = delivery;
+      if (!field) return;
+      field.disabled = !delivery;
+      field.required = delivery && name !== "addressLine2";
     });
     if (!delivery) {
-      elements["checkout-form"].querySelectorAll("#address-field .field.has-error input, #address-field .field.has-error select").forEach(clearFieldError);
+      elements["checkout-form"].querySelectorAll("#address-field input, #address-field select").forEach(clearFieldError);
     }
+    setFormAlert("");
     syncDeliveryField();
     if (elements["checkout-dialog"].open) renderReview();
+    announce(delivery
+      ? "Delivery selected. Enter the business delivery address."
+      : "Ontario pickup selected. No delivery address is needed.");
   }
 
   function updateTaxUi(rule, totals) {
@@ -989,7 +1020,10 @@
     elements["review-tax"].textContent = rule ? formatMoney(totals.tax) : "—";
     elements["review-total"].textContent = formatMoney(rule ? totals.total : totals.subtotal);
     if (elements["place-order-label"]) {
-      elements["place-order-label"].textContent = rule ? "Place order · " + formatMoney(totals.total) : "Place wholesale order";
+      const fulfilment = normalizeFulfilment(getFormData().fulfilment).toLowerCase();
+      elements["place-order-label"].textContent = rule
+        ? "Place " + fulfilment + " order · " + formatMoney(totals.total)
+        : "Place wholesale order";
     }
   }
 
@@ -1334,6 +1368,7 @@
 
     elements["review-order"].addEventListener("click", openCheckout);
     elements["mobile-order-bar"].addEventListener("click", openCheckout);
+    elements["clear-order"].addEventListener("click", clearOrder);
     elements["close-checkout"].addEventListener("click", function () { closeCheckout(); });
 
     elements["checkout-dialog"].addEventListener("cancel", function (event) {
@@ -1348,7 +1383,7 @@
     elements["checkout-form"].addEventListener("change", function (event) {
       if (event.target.name === "fulfilment") toggleFulfilment();
       if (event.target.matches("input, textarea, select")) clearFieldError(event.target);
-      if (event.target.name === "province" || event.target.name === "fulfilment") renderReview();
+      if (event.target.name === "province") renderReview();
       syncDeliveryField();
       persistDraft();
     });
@@ -1441,6 +1476,7 @@
     clampQuantity: clampQuantity,
     normalizePostal: normalizePostal,
     isValidPostal: isValidPostal,
+    normalizeFulfilment: normalizeFulfilment,
     getTaxRule: getTaxRule,
     shouldBodyBeLocked: shouldBodyBeLocked,
     isStatusTransportError: isStatusTransportError,
