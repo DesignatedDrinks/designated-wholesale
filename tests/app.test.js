@@ -157,6 +157,14 @@ test("dialog body lock is released whenever all dialogs are closed", () => {
   assert.equal(app.shouldBodyBeLocked(false, false), false);
 });
 
+test("backend version gate compares semantic version parts", () => {
+  assert.equal(app.isVersionAtLeast("8.3", "8.3"), true);
+  assert.equal(app.isVersionAtLeast("8.4", "8.3"), true);
+  assert.equal(app.isVersionAtLeast("8.10", "8.3"), true);
+  assert.equal(app.isVersionAtLeast("8.2", "8.3"), false);
+  assert.equal(app.isVersionAtLeast("", "8.3"), false);
+});
+
 test("status callback network errors are distinguishable from server errors", () => {
   assert.equal(app.isStatusTransportError(new Error("The request could not be completed.")), true);
   assert.equal(app.isStatusTransportError(new Error("The request timed out.")), true);
