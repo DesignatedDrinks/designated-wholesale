@@ -1,5 +1,5 @@
 /**
- * Designated Drinks Wholesale backend v8.3
+ * Designated Drinks Wholesale backend v8.4
  * Reliable order persistence, province-aware GST/HST, live catalogue pricing,
  * server-side inventory caps, idempotent submissions, and fast saved-status polling.
  */
@@ -20,7 +20,7 @@ const CONFIG = Object.freeze({
   PRODUCT_CACHE_SECONDS: 30,
   BRAND_LOGO_URL: "https://designateddrinks.github.io/designated-wholesale/dd-logo.png",
   BRAND_WEBSITE: "https://designateddrinks.ca",
-  VERSION: "8.3"
+  VERSION: "8.4"
 });
 
 const TAX_RULES = Object.freeze({
@@ -144,7 +144,7 @@ function doPost(e) {
       clearOrderItems_(sheets.orderItems, orderId);
       writeOrderRow_(sheets.orders, existing.row, orderId, now, customer, totals, "WRITING", "PENDING", "", submissionId);
     } else {
-      orderId = createOrderId_(sheets.orders, now);
+      orderId = createOrderId_(sheets.orders, sheets.orderItems, now);
       const row = Math.max(sheets.orders.getLastRow() + 1, 2);
       writeOrderRow_(sheets.orders, row, orderId, now, customer, totals, "WRITING", "PENDING", "", submissionId);
     }
@@ -593,16 +593,20 @@ function findOrderBySubmissionId_(sheet, submissionId) {
   return null;
 }
 
-function createOrderId_(sheet, date) {
+function createOrderId_(ordersSheet, orderItemsSheet, date) {
   const datePart = Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyyMMdd");
   const prefix = "DDW-" + datePart + "-";
   let highest = 0;
-  if (sheet.getLastRow() >= 2) {
+  // Scan both tables. An old or manually removed order row can leave valid item
+  // history behind; reusing that ID makes persistence verification count those
+  // orphaned items and incorrectly rejects the customer's new order.
+  [ordersSheet, orderItemsSheet].forEach(function (sheet) {
+    if (!sheet || sheet.getLastRow() < 2) return;
     sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function (row) {
       const value = String(row[0] || "");
       if (value.indexOf(prefix) === 0) highest = Math.max(highest, Number(value.slice(prefix.length)) || 0);
     });
-  }
+  });
   return prefix + String(highest + 1).padStart(3, "0");
 }
 
