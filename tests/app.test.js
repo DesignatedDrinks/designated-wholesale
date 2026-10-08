@@ -165,6 +165,24 @@ test("backend version gate compares semantic version parts", () => {
   assert.equal(app.isVersionAtLeast("", "8.3"), false);
 });
 
+test("backend reads use credential-free CORS and do not add a JSONP callback", () => {
+  const url = app.buildApiUrl("https://script.google.com/macros/s/test/exec", {
+    action: "status",
+    submissionId: "TEST 123",
+    _: 42
+  });
+  const parsed = new URL(url);
+  assert.equal(parsed.searchParams.get("action"), "status");
+  assert.equal(parsed.searchParams.get("submissionId"), "TEST 123");
+  assert.equal(parsed.searchParams.has("callback"), false);
+  assert.deepEqual(app.getApiRequestOptions(), {
+    method: "GET",
+    mode: "cors",
+    cache: "no-store",
+    credentials: "omit"
+  });
+});
+
 test("status callback network errors are distinguishable from server errors", () => {
   assert.equal(app.isStatusTransportError(new Error("The request could not be completed.")), true);
   assert.equal(app.isStatusTransportError(new Error("The request timed out.")), true);
