@@ -19,8 +19,8 @@
     catalogueCacheKey: "ddw-wholesale-catalogue-v3",
     catalogueCacheMs: 5 * 60 * 1000,
     requestTimeoutMs: 10000,
-    statusRequestTimeoutMs: 1500,
-    orderConfirmTimeoutMs: 22000,
+    statusRequestTimeoutMs: 2500,
+    orderConfirmTimeoutMs: 30000,
     statusPollMs: 450
   });
 
@@ -173,7 +173,7 @@
 
   function normalizeMaxCases(value) {
     const cases = Math.floor(cleanNumber(value));
-    return cases > 0 ? Math.min(cases, CONFIG.maxQuantity) : CONFIG.maxQuantity;
+    return cases > 0 ? Math.min(cases, CONFIG.maxQuantity) : 0;
   }
 
   function normalizeProductRow(row, sheetRow) {
@@ -1130,11 +1130,9 @@
       } catch (error) {
         lastError = error;
         if (error && /could not be processed|missing|required|unavailable|valid|only \d+ case/i.test(error.message || "")) throw error;
-        const currentPostState = typeof getPostState === "function" ? getPostState() : null;
-        if (currentPostState && currentPostState.completed && !currentPostState.error && isStatusTransportError(error)) {
-          console.warn("Status callback failed after completed order POST; using POST completion as confirmation.", error);
-          return transportConfirmedStatus();
-        }
+        // A no-cors POST resolving only confirms that the browser handed off the
+        // request. It does not prove the Apps Script saved the order. Never clear
+        // the cart or show success until the status endpoint confirms persistence.
       }
       await wait(CONFIG.statusPollMs);
     }
