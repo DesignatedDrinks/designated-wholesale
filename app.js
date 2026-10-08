@@ -13,6 +13,7 @@
     sheetId: "17bcjrwi7Ah8_SXaPc9VrCIi2fdYnnNofmUoGy4LKBQ8",
     sheetGid: "0",
     endpoint: "https://script.google.com/macros/s/AKfycbzuvKRNFWQ_uPGNZ4psI9dCIdJFNjE-Fxd51f2TDonEuuLE02d1JUYB1eiMSCEBLs8r/exec",
+    minBackendVersion: "8.3",
     maxQuantity: 999,
     cartKey: "ddw-wholesale-cart-v3",
     draftKey: "ddw-wholesale-checkout-draft-v3",
@@ -423,6 +424,32 @@
       script.src = url + (url.includes("?") ? "&" : "?") + query.toString();
       document.head.appendChild(script);
     });
+  }
+
+  function isVersionAtLeast(current, minimum) {
+    const a = String(current || "").split(".").map(function (part) { return parseInt(part, 10) || 0; });
+    const b = String(minimum || "").split(".").map(function (part) { return parseInt(part, 10) || 0; });
+    const length = Math.max(a.length, b.length);
+    for (let i = 0; i < length; i += 1) {
+      const left = a[i] || 0;
+      const right = b[i] || 0;
+      if (left > right) return true;
+      if (left < right) return false;
+    }
+    return true;
+  }
+
+  async function verifyBackendReady() {
+    let health;
+    try {
+      health = await jsonp(CONFIG.endpoint, { _: Date.now() }, CONFIG.requestTimeoutMs);
+    } catch (error) {
+      throw new Error("Wholesale checkout is temporarily unavailable. Please try again shortly.");
+    }
+    if (!health || health.status !== "ok" || !isVersionAtLeast(health.version, CONFIG.minBackendVersion)) {
+      throw new Error("Wholesale checkout is temporarily unavailable while a system update finishes. Your cart is saved.");
+    }
+    return health;
   }
 
   function loadProductsFromCsv() {
@@ -1195,6 +1222,15 @@
       return;
     }
 
+    setSubmitting(true, "Checking checkout…");
+    try {
+      await verifyBackendReady();
+    } catch (error) {
+      setFormAlert(error && error.message ? error.message : "Wholesale checkout is temporarily unavailable.");
+      setSubmitting(false, "Place wholesale order");
+      return;
+    }
+
     persistDraft(data);
     if (!state.submissionId) state.submissionId = createSubmissionId();
     setSubmitting(true, "Recording order…");
@@ -1400,6 +1436,7 @@
     isValidPostal: isValidPostal,
     getTaxRule: getTaxRule,
     shouldBodyBeLocked: shouldBodyBeLocked,
-    isStatusTransportError: isStatusTransportError
+    isStatusTransportError: isStatusTransportError,
+    isVersionAtLeast: isVersionAtLeast
   };
 });
