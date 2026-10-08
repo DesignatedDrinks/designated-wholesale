@@ -391,6 +391,61 @@
     document.body.classList.toggle("dialog-open", locked);
   }
 
+  function buildApiUrl(url, params) {
+    const query = new URLSearchParams(params || {});
+    return url + (url.includes("?") ? "&" : "?") + query.toString();
+  }
+
+  function getApiRequestOptions(signal) {
+    const options = {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+      credentials: "omit"
+    };
+    if (signal) options.signal = signal;
+    return options;
+  }
+
+  function fetchJson(url, params, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timeout = timeoutMs || CONFIG.requestTimeoutMs;
+      let finished = false;
+      const timer = window.setTimeout(function () {
+        if (finished) return;
+        finished = true;
+        if (controller) controller.abort();
+        reject(new Error("The request timed out."));
+      }, timeout);
+
+      function finish(handler, value) {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        handler(value);
+      }
+
+      fetch(buildApiUrl(url, params), getApiRequestOptions(controller ? controller.signal : null))
+        .then(function (response) {
+          if (!response.ok) throw new Error("The request could not be completed.");
+          return response.json();
+        })
+        .then(function (payload) { finish(resolve, payload); })
+        .catch(function (error) {
+          if (finished) return;
+          const message = error && error.name === "AbortError"
+            ? "The request timed out."
+            : "The request could not be completed.";
+          finish(reject, new Error(message));
+        });
+    });
+  }
+
+  // The legacy function name is kept so all read paths share one transport.
+  // Credential-free CORS avoids Google multi-account cookies rewriting the
+  // public /macros/s/ URL to a broken /macros/u/<n>/ URL. Older browsers can
+  // still fall back to the original script-tag JSONP request.
   function jsonp(url, params, timeoutMs) {
     return new Promise(function (resolve, reject) {
       const callback = "ddwJsonp" + Date.now() + String(++state.jsonpCounter);
@@ -1437,6 +1492,8 @@
     getTaxRule: getTaxRule,
     shouldBodyBeLocked: shouldBodyBeLocked,
     isStatusTransportError: isStatusTransportError,
-    isVersionAtLeast: isVersionAtLeast
+    isVersionAtLeast: isVersionAtLeast,
+    buildApiUrl: buildApiUrl,
+    getApiRequestOptions: getApiRequestOptions
   };
 });
