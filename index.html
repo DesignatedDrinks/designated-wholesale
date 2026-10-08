@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="catalogue-ux.css?v=20260902-5">
-  <script src="app.js?v=20261007-4" defer></script>
+  <link rel="stylesheet" href="catalogue-ux.css?v=20261008-1">
+  <script src="app.js?v=20261008-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#catalogue">Skip to products</a>
@@ -124,6 +124,7 @@
               <div class="subtotal"><span>Subtotal</span><strong id="summary-subtotal">$0.00</strong></div>
               <p>GST/HST and delivery are calculated during review.</p>
             </div>
+            <button id="clear-order" class="summary-clear-button" type="button">Clear order</button>
           </div>
           <button id="review-order" class="primary-button" type="button" disabled>
             <span id="review-order-label">Review order</span>
@@ -202,13 +203,18 @@
             <legend>Receive order</legend>
             <label>
               <input type="radio" name="fulfilment" value="Delivery" checked>
-              <span><strong>Delivery</strong><small>Ship to your business.</small></span>
+              <span><strong>Delivery</strong><small>Ship to your business. Freight is confirmed before invoicing.</small></span>
             </label>
             <label>
               <input type="radio" name="fulfilment" value="Pickup">
-              <span><strong>Pickup</strong><small>Pick up in Ontario.</small></span>
+              <span><strong>Pickup</strong><small>Pick up in Ontario. We’ll email when it’s ready.</small></span>
             </label>
           </fieldset>
+
+          <div id="pickup-card" class="pickup-card" role="status" hidden>
+            <strong>Ontario pickup selected</strong>
+            <span>No delivery address is needed. We’ll email you when your order is ready.</span>
+          </div>
 
           <section id="address-field" class="delivery-card">
             <div class="delivery-card-header">
