@@ -268,6 +268,23 @@
   font-weight: 500;
 }
 
+.summary-clear-button {
+  width: 100%;
+  margin-top: 11px;
+  padding: 7px;
+  border: 0;
+  color: #b8c6d4;
+  background: transparent;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.summary-clear-button:hover,
+.summary-clear-button:focus-visible { color: #fff; }
+
 /* Checkout: short, familiar, Shopify-like flow */
 .checkout-form {
   display: grid;
@@ -367,6 +384,16 @@
   background: #f7fbff;
 }
 .fulfilment-choice input:focus-visible + span { outline: 3px solid rgba(22,132,217,.25); outline-offset: 2px; }
+
+.pickup-card {
+  padding: 13px 14px;
+  border: 1px solid #a9ddca;
+  border-radius: 12px;
+  color: #14523f;
+  background: var(--success-soft);
+}
+.pickup-card strong { display: block; font-size: .86rem; }
+.pickup-card span { display: block; margin-top: 2px; font-size: .74rem; }
 
 .delivery-card {
   padding: 14px;
