@@ -419,7 +419,9 @@ function inferStyle_(title, category) {
     ["Wheat", /wheat|witbier|\bwit\b/],
     ["Blonde Ale", /blonde/],
     ["Amber Ale", /amber/],
-    ["Radler", /radler/]
+    ["Radler", /radler/],
+    ["Kölsch", /kölsch|kolsch/],
+    ["Cerveza", /cerveza/]
   ];
 
   for (let index = 0; index < rules.length; index += 1) {
