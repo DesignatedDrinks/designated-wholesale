@@ -17,6 +17,6 @@ jobs:
         with:
           node-version: 22
       - run: node --check app.js
-      - run: node --check apps-script/Code.gs
-      - run: node --check apps-script/ShopifyInventorySync.gs
+      - run: cp apps-script/Code.gs /tmp/Code.js && node --check /tmp/Code.js
+      - run: cp apps-script/ShopifyInventorySync.gs /tmp/ShopifyInventorySync.js && node --check /tmp/ShopifyInventorySync.js
       - run: npm test
