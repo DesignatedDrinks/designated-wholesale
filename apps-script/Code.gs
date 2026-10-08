@@ -1,5 +1,5 @@
 /**
- * Designated Drinks Wholesale backend v8.2
+ * Designated Drinks Wholesale backend v8.3
  * Reliable order persistence, province-aware GST/HST, live catalogue pricing,
  * server-side inventory caps, idempotent submissions, and fast saved-status polling.
  */
@@ -20,7 +20,7 @@ const CONFIG = Object.freeze({
   PRODUCT_CACHE_SECONDS: 30,
   BRAND_LOGO_URL: "https://designateddrinks.github.io/designated-wholesale/dd-logo.png",
   BRAND_WEBSITE: "https://designateddrinks.ca",
-  VERSION: "8.2"
+  VERSION: "8.3"
 });
 
 const TAX_RULES = Object.freeze({
@@ -428,7 +428,10 @@ function getProductCatalog_(spreadsheet) {
     const casePrice = roundMoney_(Number(row[5]));
     if (!Number.isFinite(casePrice) || casePrice <= 0) return;
     const maxCasesRaw = Math.floor(Number(row[15]) || 0);
-    const maxCases = maxCasesRaw > 0 ? Math.min(maxCasesRaw, CONFIG.MAX_QUANTITY_PER_ITEM) : CONFIG.MAX_QUANTITY_PER_ITEM;
+    // Fail closed: blank/zero wholesale availability means the product is not
+    // orderable. Never turn missing inventory data into an unlimited quantity.
+    if (maxCasesRaw < 1) return;
+    const maxCases = Math.min(maxCasesRaw, CONFIG.MAX_QUANTITY_PER_ITEM);
     const parts = splitProductTitle_(catalogTitle);
     const category = cleanText_(row[9], 80) || inferCategory_(catalogTitle);
 
@@ -1094,7 +1097,7 @@ function inferStyle_(title, category) {
     ["IPA", /\bipa\b|india pale ale/], ["Pale Ale", /pale ale/], ["Lager", /lager/],
     ["Pilsner", /pilsner/], ["Stout", /stout/], ["Porter", /porter/],
     ["Sour", /sour|gose/], ["Wheat", /wheat|witbier/], ["Blonde Ale", /blonde/],
-    ["Amber Ale", /amber/]
+    ["Amber Ale", /amber/], ["Kölsch", /kölsch|kolsch/], ["Cerveza", /cerveza/]
   ];
   for (let i = 0; i < rules.length; i += 1) if (rules[i][1].test(value)) return rules[i][0];
   return category;
