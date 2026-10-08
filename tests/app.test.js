@@ -57,6 +57,20 @@ test("productsFromCsv excludes inactive products", () => {
   assert.equal(products[0].maxCases, 3);
 });
 
+test("productsFromCsv fails closed when wholesale availability is blank or zero", () => {
+  const header = new Array(19).fill("");
+  header[0] = "Product";
+  const blank = new Array(19).fill("");
+  blank[0] = "Blank Stock Brewing (Non-Alcoholic) IPA";
+  blank[5] = "72";
+  blank[6] = "yes";
+  const zero = blank.slice();
+  zero[0] = "Zero Stock Brewing (Non-Alcoholic) Lager";
+  zero[15] = "0";
+  const csv = [header, blank, zero].map((row) => row.join(",")).join("\n");
+  assert.equal(app.productsFromCsv(csv).length, 0);
+});
+
 test("calculateCart caps quantities at available wholesale cases", () => {
   const products = new Map([
     ["A", { sku: "A", casePrice: 79.92, maxCases: 2 }],
