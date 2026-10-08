@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const app = require("../app.js");
 
 test("parseCsv handles commas, escaped quotes and line breaks inside quoted fields", () => {
@@ -113,6 +115,9 @@ test("Canadian postal code normalization and province tax rules are deterministi
   assert.equal(app.getTaxRule("NS", "Delivery").rate, 0.14);
   assert.equal(app.getTaxRule("BC", "Delivery").rate, 0.05);
   assert.equal(app.getTaxRule("BC", "Pickup").rate, 0.13);
+  assert.equal(app.getTaxRule("BC", " pickup ").rate, 0.13);
+  assert.equal(app.normalizeFulfilment("PICKUP"), "Pickup");
+  assert.equal(app.normalizeFulfilment("unexpected"), "Delivery");
 });
 
 test("validateCheckout enforces the short structured checkout and skips delivery address for pickup", () => {
@@ -158,11 +163,18 @@ test("dialog body lock is released whenever all dialogs are closed", () => {
 });
 
 test("backend version gate compares semantic version parts", () => {
-  assert.equal(app.isVersionAtLeast("8.3", "8.3"), true);
-  assert.equal(app.isVersionAtLeast("8.4", "8.3"), true);
-  assert.equal(app.isVersionAtLeast("8.10", "8.3"), true);
-  assert.equal(app.isVersionAtLeast("8.2", "8.3"), false);
-  assert.equal(app.isVersionAtLeast("", "8.3"), false);
+  assert.equal(app.isVersionAtLeast("8.4", "8.4"), true);
+  assert.equal(app.isVersionAtLeast("8.5", "8.4"), true);
+  assert.equal(app.isVersionAtLeast("8.10", "8.4"), true);
+  assert.equal(app.isVersionAtLeast("8.3", "8.4"), false);
+  assert.equal(app.isVersionAtLeast("", "8.4"), false);
+});
+
+test("backend order IDs scan Orders and Order Items before choosing the next number", () => {
+  const code = fs.readFileSync(path.join(__dirname, "..", "apps-script", "Code.gs"), "utf8");
+  assert.match(code, /VERSION:\s*"8\.4"/);
+  assert.match(code, /createOrderId_\(sheets\.orders,\s*sheets\.orderItems,\s*now\)/);
+  assert.match(code, /function createOrderId_\(ordersSheet,\s*orderItemsSheet,\s*date\)/);
 });
 
 test("backend JSONP reads omit Google account cookies", () => {
